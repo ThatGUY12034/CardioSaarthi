@@ -49,6 +49,12 @@ cardiosaarthi:
   # fallback value is a signing key that ships to production unchanged.
   jwt-secret: ${CARDIO_JWT_SECRET:}
 
+  # Two accounts with memorable credentials for demonstrating the platform, at
+  # the cost of a four-digit password. Off unless explicitly switched on, and it
+  # must stay off anywhere this service is reachable from another machine.
+  demo-accounts:
+    enabled: ${CARDIO_DEMO_ACCOUNTS:false}
+
   bootstrap:
     # Set these in .env to create or update one administrator account at start
     # up. Left empty, no account is created and nothing can log in -- which is
