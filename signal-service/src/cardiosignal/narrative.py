@@ -191,8 +191,38 @@ def build_user_prompt(
             f"  {clinical_report.strip()[:600]}",
         ]
 
+    # Naming the forbidden words beats catching them afterwards. Every rejection
+    # in the first large run was the same failure -- a vignette for an infarction
+    # case opening its history with "previous myocardial infarction" -- and a
+    # model told "never name the diagnosis" does not reliably work out which
+    # words those are. So it is told.
+    forbidden = forbidden_terms(diagnostic_labels)
+    if forbidden:
+        parts += [
+            "",
+            "These words and abbreviations must not appear anywhere in your response,",
+            "in any field and in any tense, including as past medical history:",
+            "  " + ", ".join(forbidden),
+            "A previous episode of the same condition is still naming it.",
+        ]
+
     parts += ["", "Return only the JSON object."]
     return "\n".join(parts)
+
+
+def forbidden_terms(diagnostic_labels: list[str]) -> list[str]:
+    """The words that would give this particular case away.
+
+    Drawn from the same alias table `diagnosis_leaks` checks against, so
+    the instruction and the validator cannot drift apart: what the model is told
+    not to write is exactly what it would be rejected for writing.
+    """
+    joined = " ".join(diagnostic_labels).lower()
+    terms: list[str] = []
+    for trigger, aliases in DIAGNOSIS_ALIASES.items():
+        if trigger in joined:
+            terms.extend(aliases)
+    return sorted(set(terms))
 
 
 def validate(
@@ -329,6 +359,7 @@ __all__ = [
     "SYSTEM_PROMPT",
     "build_user_prompt",
     "diagnosis_leaks",
+    "forbidden_terms",
     "inject_computed_vitals",
     "validate",
 ]

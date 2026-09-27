@@ -303,3 +303,35 @@ def test_a_reply_with_no_object_is_transient():
 
     with pytest.raises(TransientError):
         _extract()("I cannot help with that request.")
+
+
+# ---------------------------------------------------------------------------
+# telling the model, rather than only catching it
+# ---------------------------------------------------------------------------
+def test_the_prompt_names_the_words_that_would_give_this_case_away():
+    """Every rejection in the first large run was the same failure: a vignette
+    for an infarction case opening its history with "previous myocardial
+    infarction". A model told "never name the diagnosis" does not reliably work
+    out which words those are, so it is told."""
+    prompt = narrative.build_user_prompt(
+        age=70, sex="male", age_censored=False,
+        diagnostic_labels=["inferior myocardial infarction"],
+    )
+    for term in ("infarction", "infarct", "stemi", "heart attack"):
+        assert term in prompt, term
+    assert "in any tense, including as past medical history" in prompt
+
+
+def test_the_instruction_and_the_validator_cannot_drift_apart():
+    """Whatever the model is told not to write is exactly what it would be
+    rejected for writing, because both read the same alias table."""
+    labels = ["atrial fibrillation", "left ventricular hypertrophy"]
+    for term in narrative.forbidden_terms(labels):
+        assert narrative.diagnosis_leaks(f"history of {term} noted", labels), term
+
+
+def test_a_case_with_nothing_to_hide_gets_no_forbidden_list():
+    prompt = narrative.build_user_prompt(
+        age=40, sex="female", age_censored=False, diagnostic_labels=["normal ECG"],
+    )
+    assert "must not appear anywhere" not in prompt

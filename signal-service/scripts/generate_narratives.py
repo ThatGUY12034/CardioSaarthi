@@ -384,9 +384,12 @@ def main() -> None:
                         """,
                         (Jsonb(result), args.model, generated_at, case["case_id"]),
                     )
+                # Committed one at a time. Batching was saving nothing and
+                # meant that a stall discarded up to 25 narratives that had
+                # already been paid for.
+                conn.commit()
                 written += 1
-                if written % 25 == 0:
-                    conn.commit()
+                if written % 10 == 0:
                     log(f"  {written} written")
         conn.commit()
 
