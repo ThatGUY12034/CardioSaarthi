@@ -1,14 +1,16 @@
-# Datasets (downloaded, never committed)
+# ============ DATASETS AND PIPELINE OUTPUT ============
+# Downloaded from PhysioNet, never committed.
 data/
-
-# Pipeline output
+# Measured cases, rendered images, per-case JSON. Reproducible by re-running the
+# pipeline, and far too large to carry in git.
 artifacts/
 
-# Generated validation output (report.md is committed, images are not)
+# Generated validation output. report.md is committed; the figures it refers to
+# are regenerated with `cardiosignal validate --report`.
 docs/validation/*.png
 docs/validation/*.pdf
 
-# Python
+# ============ PYTHON (signal-service) ============
 .venv/
 __pycache__/
 *.py[cod]
@@ -20,11 +22,40 @@ htmlcov/
 build/
 dist/
 
-# Editors / OS
+# ============ JAVA (review-api) ============
+# The Maven wrapper is jar-less: mvnw plus .mvn/wrapper/maven-wrapper.properties
+# are committed, and Maven itself is downloaded on first run.
+review-api/target/
+*.class
+
+# ============ NODE (frontend) ============
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+coverage/
+.nyc_output/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ============ SECRETS ============
+# One .env at the repository root holds every credential this project uses.
+# .env.example is committed and carries no real values.
+.env
+.env.local
+frontend/.env.local
+frontend/.env.*.local
+application-local.properties
+application-secrets.properties
+
+# ============ EDITORS / OS ============
 .vscode/
 .idea/
+*.iml
+*.iws
+*.ipr
+.DS_Store
 Thumbs.db
 desktop.ini
-
-# Local secrets
-.env
