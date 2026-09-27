@@ -1,0 +1,9 @@
+# node_modules is reinstalled inside the image from the lock file. Sending the
+# host's copy would be slower than the build and wrong on a different platform.
+node_modules
+dist
+.vite
+.env.local
+.env.*.local
+Dockerfile
+.dockerignore

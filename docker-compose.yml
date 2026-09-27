@@ -1,11 +1,18 @@
-# CardioSaarthi — local development stack.
+# CardioSaarthi -- local stack.
 #
-# Only the database is here for now. The Spring Boot review API and the React
-# review console join this file as they are built, on the same network.
+# Two ways to run it, on purpose.
 #
-# Start with:  docker compose up -d
-# Credentials come from .env (copy .env.example). They are development-only and
-# the port is bound to 127.0.0.1 so nothing is reachable off this machine.
+#   docker compose up -d
+#       PostgreSQL only. The development loop: the API runs from ./mvnw and the
+#       interface from npm run dev, both with hot reload.
+#
+#   docker compose --profile demo up -d --build
+#       All three services in containers. A machine with Docker and nothing else
+#       -- no JDK, no Node -- reaches a working demonstration with this one
+#       command. This is what a presentation machine should use.
+#
+# Credentials come from .env (copy demo/env.demo). Every published port is bound
+# to 127.0.0.1, so nothing here is reachable from another machine.
 
 services:
   postgres:
@@ -25,9 +32,12 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # No schema is mounted here. Flyway inside review-api owns the schema, so
-      # there is exactly one copy of the DDL and one thing that applies it.
-      # Start this container, then start review-api, then run the ingest.
+      # The case bank, loaded once when the data directory is first created.
+      # PostgreSQL's entrypoint runs everything in this directory on initdb and
+      # never again, so it seeds a new machine and cannot touch an existing
+      # database. Flyway then finds its own history inside the dump and applies
+      # nothing, which is why the schema is not built twice.
+      - ./demo/seed:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # Other services wait on this rather than sleeping and hoping.
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cardiosaarthi} -d ${POSTGRES_DB:-cardiosaarthi}"]
@@ -35,6 +45,66 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Demonstration profile: the whole platform in containers.
+  # ---------------------------------------------------------------------------
+  review-api:
+    profiles: ["demo"]
+    build:
+      context: ./review-api
+    container_name: cardiosaarthi-api
+    # Not unless-stopped. This service exits deliberately on a configuration it
+    # refuses -- a signing key under 32 characters, for one -- and a restart loop
+    # would hide the message that says so.
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # The service name, not 127.0.0.1: inside the network that is a different
+      # machine. This is the single most common way a containerised stack fails.
+      CARDIO_JDBC_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cardiosaarthi}
+      POSTGRES_USER: ${POSTGRES_USER:-cardiosaarthi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      REVIEW_API_PORT: 8080
+      CARDIO_REPO_ROOT: /repo
+      CARDIO_JWT_SECRET: ${CARDIO_JWT_SECRET:?set CARDIO_JWT_SECRET in .env, 32 characters or more}
+      CARDIO_DEMO_ACCOUNTS: ${CARDIO_DEMO_ACCOUNTS:-false}
+      # The browser loads the interface from the host, so that is the origin the
+      # API sees, whichever port the interface was published on.
+      CARDIO_CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-5173},http://127.0.0.1:${FRONTEND_PORT:-5173}
+    volumes:
+      # The rendered ECGs, read-only. The database refers to them as
+      # artifacts/images/<id>_clean.png relative to the repository root, which
+      # inside this container is /repo.
+      - ./artifacts:/repo/artifacts:ro
+    ports:
+      - "127.0.0.1:${REVIEW_API_PORT:-8090}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  frontend:
+    profiles: ["demo"]
+    build:
+      context: ./frontend
+      args:
+        # Baked into the bundle at build time, because that is when Vite reads
+        # it. It is the address the browser uses, not one this container uses.
+        VITE_API_BASE_URL: http://localhost:${REVIEW_API_PORT:-8090}/api
+    container_name: cardiosaarthi-frontend
+    restart: unless-stopped
+    depends_on:
+      review-api:
+        condition: service_started
+    ports:
+      # 5173 to match the development server, so every URL in the documentation
+      # is the same whichever way the stack was started.
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:80"
 
 volumes:
   postgres_data:

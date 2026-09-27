@@ -3,78 +3,49 @@
 Written for the panel demonstration: a laptop that has never run this project, brought to a
 working demo in about half an hour, most of which is downloads.
 
-> **A `git clone` on its own is not enough, and this is the one thing to get right.**
-> Two things the demo needs are deliberately not in git: the 461 MB of rendered ECG images, and
-> the database itself. Both have to be copied across. Clone-only gives you an app that starts,
-> shows no ECGs, and has no cases.
+> **Docker Desktop is the only thing that has to be installed.** The containers carry their own
+> JDK and Node, the case bank seeds itself from the repository, and the rendered ECGs download
+> once from a release asset. Nothing is copied by USB.
 
 ---
 
-## 1. What to carry across
+## 1. Get it — clone and run
 
-Put these on a USB drive or in a shared folder. About **480 MB** in total.
+Nothing has to be copied by hand. Everything comes from GitHub: the code and the case bank from the
+repository, and the 479 MB of rendered ECGs from a release asset the setup script downloads once.
 
-| What | Where it goes | Size | Why |
-|---|---|---|---|
-| The repository | anywhere, e.g. `C:\CardioSaarthi` | ~10 MB | the code |
-| `artifacts\images\` | inside the repository, same path | 461 MB | the rendered ECGs. The database refers to them by this path, so the folder name matters |
-| `artifacts\handover\cardiosaarthi-db.sql` | inside the repository, same path | 12 MB | 714 measured cases, the nine parameters for each, and 632 written vignettes |
+Install **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** and open it, wait
+until it says *Running*. That is the only prerequisite — the containers carry their own JDK and
+Node, so neither has to be installed.
 
-**`data\` is not needed.** That is 203 MB of raw PhysioNet recordings, used only to re-run the
-measurement pipeline or the validation suite. The demo reads already-measured values.
+```powershell
+git clone https://github.com/ThatGUY12034/CardioSaarthi.git
+```
 
-The simplest way to be sure nothing is missed: copy the whole `CardioSaarthi` folder, and skip
-only `data`, `.venv`, `node_modules` and `review-api\target`.
-
----
-
-## 2. What to install
-
-Three things, in any order. All free, all default options.
-
-| | Version | Note |
-|---|---|---|
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | latest | **open it once and wait until it says Running** before the next step |
-| [JDK 21 or newer](https://adoptium.net/) | 21+ | Temurin. Tick "Set JAVA_HOME" if the installer offers it |
-| [Node.js](https://nodejs.org/) | 20+ | the LTS download |
-
-Then **close and reopen the terminal**, so it picks up the new commands.
-
----
-
-## 3. Set it up — one command
-
-Open PowerShell in the repository folder and run:
+```powershell
+cd CardioSaarthi; copy demo\env.demo .env
+```
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File demo\setup.ps1
 ```
 
-It checks the three installs, writes the configuration, starts the database, loads the 714 cases
-and installs the frontend's packages. It says what it is doing at each step and stops with a plain
-explanation if something is missing. Running it twice is safe: it never overwrites a database that
-already has cases in it.
+The script downloads the ECGs (479 MB, once), checks the download against a committed SHA-256 so a
+truncated file is caught rather than extracted, and unpacks them into `artifacts\images`.
 
-The first run takes a few minutes, mostly downloading the PostgreSQL image.
-
----
-
-## 4. Start it — two terminals
-
-Leave both open for the whole demonstration. Their logs are worth having on screen if the panel
-asks what is happening.
-
-**Terminal 1 — the backend.** Wait for `Started ReviewApiApplication`. The first run also downloads
-Maven and the dependencies, which takes a few minutes; later runs take about twenty seconds.
+## 2. Start it — one command
 
 ```powershell
-cd review-api; .\mvnw spring-boot:run
+docker compose --profile demo up -d --build
 ```
 
-**Terminal 2 — the interface.**
+The first run builds the two images and takes roughly ten minutes: Maven and npm are downloading
+their dependencies inside the build. Later runs start in about twenty seconds.
+
+Watch it come up, and stop watching once the API reports healthy:
 
 ```powershell
-cd frontend; npm run dev
+docker compose --profile demo ps
 ```
 
 Then open **<http://localhost:5173>**.
@@ -88,7 +59,26 @@ Then open **<http://localhost:5173>**.
 > They come from `CARDIO_DEMO_ACCOUNTS`, which is off by default; every account made through the
 > API still needs twelve characters. Do not switch this on anywhere other people can reach.
 
----
+The case bank loads itself. PostgreSQL runs everything in `demo/seed` the first time it creates its
+data directory, so the 714 cases, their nine computed parameters and the 632 written vignettes are
+there before the API connects. Flyway finds its own migration history inside that seed and applies
+nothing on top.
+
+## 3. Stopping and restarting
+
+```powershell
+docker compose --profile demo down
+```
+
+That leaves the database intact. To start again, repeat the `up` command — without `--build`, since
+the images already exist.
+
+## 4. The development loop, for comparison
+
+`docker compose up -d` on its own starts **only** PostgreSQL, which is what you want while working
+on the code: the API then runs from `./mvnw spring-boot:run` and the interface from `npm run dev`,
+both with hot reload. That path needs JDK 21 and Node 20 installed. The demo profile exists so a
+presentation machine does not.
 
 ## 5. A run of show
 

@@ -1,0 +1,7 @@
+# Build output from the host. The image compiles its own.
+target
+.mvn
+mvnw
+mvnw.cmd
+Dockerfile
+.dockerignore

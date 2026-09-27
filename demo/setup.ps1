@@ -63,9 +63,46 @@ Good "Node $(& node -v)"
 # The rendered ECGs are not in git -- they are 461 MB of PNG. Without them the
 # app runs and every ECG is a broken image, which is worth catching here rather
 # than on stage.
+# The 479 MB of rendered ECGs are a release asset rather than a git object: a
+# clone stays small, and a replaced asset does not mean a rewritten history.
+# Downloaded once, then left alone.
 $images = Join-Path $repo 'artifacts\images'
 if (-not (Test-Path $images)) {
-    Die "artifacts\images is missing. Copy that folder across from the machine the pipeline was run on -- the rendered ECGs are not in git."
+    $zip = Join-Path $repo 'artifacts\ecg-images.zip'
+    New-Item -ItemType Directory -Force (Join-Path $repo 'artifacts') | Out-Null
+
+    if (-not (Test-Path $zip)) {
+        Write-Host '    downloading the rendered ECGs (479 MB, once)'
+        $url = 'https://github.com/ThatGUY12034/CardioSaarthi/releases/download/demo-assets-v1/ecg-images.zip'
+        # Invoke-WebRequest in PowerShell 5.1 buffers the whole body in memory and
+        # its progress bar costs more than the download. curl ships with Windows.
+        & curl.exe -L --fail --progress-bar -o $zip $url
+        if ($LASTEXITCODE -ne 0) {
+            Remove-Item $zip -ErrorAction SilentlyContinue
+            Die "the download failed. Check the connection, or fetch it by hand from`n    $url`n    and save it as artifacts\ecg-images.zip, then run this again."
+        }
+    } else {
+        Good 'found artifacts\ecg-images.zip already downloaded'
+    }
+
+    # A truncated download extracts without complaint and produces ECGs with the
+    # bottom half missing, which is worse than a failure.
+    $expected = (Get-Content (Join-Path $repo 'demo\ecg-images.zip.sha256') -Raw).Split()[0].Trim()
+    $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+    if ($actual -ne $expected.ToLower()) {
+        Remove-Item $zip -ErrorAction SilentlyContinue
+        Die 'the download is incomplete or corrupt and has been deleted. Run this again.'
+    }
+    Good 'checksum matches'
+
+    Write-Host '    extracting'
+    # tar ships with Windows 10 and later and reads a zip far faster than
+    # Expand-Archive, which unpacks 1428 files one COM call at a time.
+    Push-Location $repo
+    try { & tar.exe -xf $zip }
+    finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0) { Die 'extraction failed.' }
+    Good 'rendered ECGs in place'
 }
 $pngCount = (Get-ChildItem $images -Filter *.png -ErrorAction SilentlyContinue | Measure-Object).Count
 if ($pngCount -lt 100) { Warn "only $pngCount images found in artifacts\images; expected about 1428" }
