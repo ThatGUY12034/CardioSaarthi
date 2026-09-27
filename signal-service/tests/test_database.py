@@ -429,3 +429,55 @@ def test_real_measurement_json_has_every_field_the_ingest_reads():
     for name in MEASURE_NAMES:
         assert name in payload, f"ingest reads the measure {name!r} and the engine no longer writes it"
         assert "unit" in payload[name]
+
+
+# ---------------------------------------------------------------------------
+# re-ingest must not destroy what it cannot rebuild
+# ---------------------------------------------------------------------------
+def test_a_generated_narrative_survives_a_re_ingest(cur):
+    """Re-measuring an ECG is not a reason to re-pay for writing its patient.
+
+    Every other column on a case is derived from the signal and rebuilt by the
+    pipeline. A narrative is not: it cost a model call, and the replacement path
+    used to cascade it away.
+    """
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "signal-service" / "scripts"))
+    from ingest_cases import _existing_narrative, _restore_narrative
+    from psycopg.types.json import Jsonb
+
+    case_id = _case(cur, ecg_id=-60)
+    cur.execute(
+        """
+        UPDATE cases SET narrative = %s, narrative_model = 'test-model',
+                         narrative_generated_at = now()
+        WHERE id = %s
+        """,
+        (Jsonb({"presenting_complaint": "two days of palpitations"}), case_id),
+    )
+
+    carried = _existing_narrative(cur, case_id)
+    assert carried is not None
+    assert carried[0]["presenting_complaint"] == "two days of palpitations"
+    assert carried[1] == "test-model"
+
+    # the replacement the ingest performs
+    cur.execute("DELETE FROM cases WHERE id = %s", (case_id,))
+    replacement_id = _case(cur, ecg_id=-60)
+    assert _existing_narrative(cur, replacement_id) is None, "the delete really does lose it"
+
+    _restore_narrative(cur, replacement_id, carried)
+    restored = _existing_narrative(cur, replacement_id)
+    assert restored is not None
+    assert restored[0]["presenting_complaint"] == "two days of palpitations"
+    assert restored[1] == "test-model"
+
+
+def test_a_case_with_no_narrative_carries_nothing(cur):
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "signal-service" / "scripts"))
+    from ingest_cases import _existing_narrative
+
+    assert _existing_narrative(cur, _case(cur, ecg_id=-61)) is None

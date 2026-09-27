@@ -14,6 +14,11 @@ and counted as protected, because re-ingesting would cascade their corrections
 away and those corrections are the validation evidence for the engine. Pass
 `--replace-reviewed` to override that, which is almost never what you want.
 
+A generated narrative is carried across a replacement rather than lost with it.
+Everything else in a case row is derived from the signal and can be rebuilt by
+re-running the pipeline; a narrative cost a model call and a re-measurement has
+no bearing on it.
+
 Usage::
 
     python scripts/ingest_cases.py                 # ingest everything new
@@ -151,6 +156,35 @@ def _existing_case(cur, source: str, ecg_id: int) -> tuple[int, int, int] | None
     )
     row = cur.fetchone()
     return (row[0], row[1], row[2]) if row else None
+
+
+def _existing_narrative(cur, case_id: int) -> tuple[Any, str | None, Any] | None:
+    """The generated vignette for a case about to be replaced, if it has one.
+
+    Everything else in a case row is derived from the signal and can be rebuilt
+    by re-running the pipeline. A narrative cannot: it cost a model call, and it
+    is the one column a re-measurement has no bearing on.
+    """
+    cur.execute(
+        "SELECT narrative, narrative_model, narrative_generated_at FROM cases WHERE id = %s",
+        (case_id,),
+    )
+    row = cur.fetchone()
+    if row is None or row[0] is None:
+        return None
+    return (row[0], row[1], row[2])
+
+
+def _restore_narrative(cur, case_id: int, carried: tuple[Any, str | None, Any]) -> None:
+    narrative, model, generated_at = carried
+    cur.execute(
+        """
+        UPDATE cases
+        SET narrative = %s, narrative_model = %s, narrative_generated_at = %s
+        WHERE id = %s
+        """,
+        (_json(narrative), model, generated_at, case_id),
+    )
 
 
 def insert_case(cur, payload: dict[str, Any], *, censored: bool, images_dir: Path) -> int:
@@ -312,7 +346,7 @@ def main() -> None:
     if not args.database_url:
         sys.exit("no database URL: set CARDIO_DATABASE_URL or pass --database-url")
 
-    inserted = replaced = protected = 0
+    inserted = replaced = protected = narratives_kept = 0
     with _connect(args.database_url) as conn, conn.cursor() as cur:
         n_conditions = seed_conditions(cur)
         print(f"conditions seeded: {n_conditions}")
@@ -323,22 +357,33 @@ def main() -> None:
             source = payload.get("source", "ptbxl")
 
             existing = _existing_case(cur, source, ecg_id)
+            carried_narrative = None
             if existing is not None:
                 case_id, n_reviews, n_corrections = existing
                 touched = n_reviews or n_corrections
                 if touched and not args.replace_reviewed:
                     protected += 1
                     continue
+                # A narrative costs an API call and is not reproducible from the
+                # signal, unlike every other column here. Carried across the
+                # replacement rather than cascaded away, because re-measuring an
+                # ECG is not a reason to re-pay for writing its patient.
+                carried_narrative = _existing_narrative(cur, case_id)
                 cur.execute("DELETE FROM cases WHERE id = %s", (case_id,))
                 replaced += 1
             else:
                 inserted += 1
 
-            insert_case(cur, payload, censored=ecg_id in censored, images_dir=args.images)
+            new_id = insert_case(cur, payload, censored=ecg_id in censored, images_dir=args.images)
+            if carried_narrative is not None:
+                _restore_narrative(cur, new_id, carried_narrative)
+                narratives_kept += 1
 
         conn.commit()
 
     print(f"inserted {inserted}, replaced {replaced}, protected {protected}")
+    if narratives_kept:
+        print(f"{narratives_kept} generated narrative(s) carried across the replacement")
     if protected:
         print(
             f"{protected} case(s) already carry faculty reviews or corrections and were left "
