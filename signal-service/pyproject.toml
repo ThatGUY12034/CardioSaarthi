@@ -49,6 +49,7 @@ markers = [
     "needs_ludb: requires the LUDB dataset in data/ludb",
     "needs_qtdb: requires the QT Database in data/qtdb",
     "slow: full-dataset validation run",
+    "needs_postgres: requires a running PostgreSQL with the schema applied",
 ]
 
 [tool.ruff]
