@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cardiosignal"
+version = "0.1.0"
+description = "CardioSaarthi Layer 1 — deterministic ECG measurement engine and standards-compliant renderer"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pandas>=2.1",
+    "pyarrow>=15.0",
+    "wfdb>=4.1",
+    "neurokit2>=0.2.7",
+    "matplotlib>=3.8",
+    "pydantic>=2.6",
+    "typer>=0.12",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "requests>=2.31",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.4",
+    "pillow>=10.0",
+]
+
+[project.scripts]
+cardiosignal = "cardiosignal.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "needs_ptbxl: requires the PTB-XL dataset in data/ptbxl",
+    "needs_ludb: requires the LUDB dataset in data/ludb",
+    "needs_qtdb: requires the QT Database in data/qtdb",
+    "slow: full-dataset validation run",
+]
+
+[tool.ruff]
+# Wider than the usual 88/100: this codebase carries a lot of inline rationale,
+# and wrapping those lines harder makes them less readable, not more.
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+# Pinned explicitly so lint results do not move when ruff changes its defaults.
+select = ["E", "F", "I", "B", "SIM", "UP", "RUF", "ISC"]
+ignore = [
+    # Typer expresses CLI options as `= typer.Option(...)` defaults. This is the
+    # library's documented idiom, not the mutable-default bug B008 is aimed at.
+    "B008",
+    # Long explanatory prose in report and docstring literals is deliberately
+    # split across lines inside lists.
+    "ISC004",
+    # `zip(xs, xs[1:])` reads more clearly than itertools.pairwise for the
+    # consecutive-beat comparisons throughout the measurement code.
+    "RUF007",
+    # Explicit int() around numpy scalars is intentional: it converts np.int64
+    # to a Python int so pydantic models and JSON stay clean.
+    "RUF046",
+    # `class X(str, Enum)` is kept over `StrEnum` because the JSON and database
+    # representations are already fixed by it and there is no behaviour to gain.
+    "UP042",
+    # Diagram and report labels use real typographic characters on purpose — an
+    # en dash in "Pan–Tompkins", a true minus in "1−MAD/median". These are
+    # rendered text, not identifiers, and the correct glyph is the point.
+    "RUF001",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
