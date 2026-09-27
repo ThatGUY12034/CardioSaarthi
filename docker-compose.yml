@@ -22,12 +22,12 @@ services:
       # Deterministic collation, so ORDER BY does not depend on the host locale.
       POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Applied in filename order, once, on an empty data directory. Deleting
-      # the volume is therefore how you rebuild the schema during development.
-      - ./platform/db/init:/docker-entrypoint-initdb.d:ro
+      # No schema is mounted here. Flyway inside review-api owns the schema, so
+      # there is exactly one copy of the DDL and one thing that applies it.
+      # Start this container, then start review-api, then run the ingest.
     healthcheck:
       # Other services wait on this rather than sleeping and hoping.
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cardiosaarthi} -d ${POSTGRES_DB:-cardiosaarthi}"]

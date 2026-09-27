@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: review-api
+
+  # The Python side and this service must never point at different databases, so
+  # both read their connection details from the one .env file at the repo root.
+  # Absent in production, where real environment variables take over.
+  config:
+    import: optional:file:../.env[.properties]
+
+  datasource:
+    url: ${CARDIO_JDBC_URL:jdbc:postgresql://localhost:55432/cardiosaarthi}
+    username: ${POSTGRES_USER:cardiosaarthi}
+    password: ${POSTGRES_PASSWORD}
+    hikari:
+      pool-name: cardiosaarthi
+      maximum-pool-size: 10
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # Deliberately NOT baseline-on-migrate. A migration set that silently
+    # adopts whatever it finds in an unknown database is how two environments
+    # end up with different schemas and nobody notices.
+
+  # Nothing here uses the servlet session: authentication is per request.
+  session:
+    store-type: none
+
+  # Nulls are serialised, deliberately. In this domain an absent value is a
+  # finding: a PR interval of null with status NOT_MEASURABLE means there is no
+  # P wave to measure from, and a console that received no field at all could not
+  # tell that from a missing one. The engine states absence explicitly and so
+  # does this API.
+
+server:
+  port: ${REVIEW_API_PORT:8080}
+  error:
+    include-message: always
+    include-binding-errors: always
+
+cardiosaarthi:
+  # Rendered ECG images are referenced in the database by a path relative to the
+  # repository root, so that is what has to be resolved against. Requests are
+  # checked to stay inside it.
+  repo-root: ${CARDIO_REPO_ROOT:..}
+  cors-allowed-origins: ${CARDIO_CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+  bootstrap:
+    # Set these in .env to create or update one administrator account at start
+    # up. Left empty, no account is created and nothing can log in -- which is
+    # the correct default for a service nobody has configured yet.
+    email: ${CARDIO_BOOTSTRAP_EMAIL:}
+    full-name: ${CARDIO_BOOTSTRAP_NAME:}
+    password: ${CARDIO_BOOTSTRAP_PASSWORD:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    # Every review decision is logged at INFO. A correction that cannot be
+    # traced back to a request is not evidence.
+    com.cardiosaarthi.review: INFO

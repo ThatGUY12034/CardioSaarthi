@@ -11,9 +11,9 @@
 -- authority for names, units and enum values. Where this file repeats them it
 -- is a mirror, not a second source of truth.
 --
--- Applied automatically by Docker on first container start. Once the Spring
--- Boot service exists it adopts this file as a Flyway baseline rather than
--- re-running it.
+-- Applied by Flyway when the review API starts. Flyway owns the schema: there
+-- is no second copy of this DDL anywhere, and a migration that has run is never
+-- edited -- later changes go in a new V-numbered file.
 
 BEGIN;
 
@@ -31,6 +31,11 @@ CREATE TABLE reviewers (
     email       text        NOT NULL,
     full_name   text        NOT NULL,
     role        text        NOT NULL CHECK (role IN ('faculty', 'admin')),
+    -- BCrypt hash. NULL is a meaningful state: the account exists and can be
+    -- referenced by past corrections, but cannot be authenticated with -- an
+    -- invited reviewer who has not set a password, or one whose access has
+    -- been withdrawn without erasing their review history.
+    password_hash text,
     active      boolean     NOT NULL DEFAULT true,
     created_at  timestamptz NOT NULL DEFAULT now()
 );
