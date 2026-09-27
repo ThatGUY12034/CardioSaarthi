@@ -35,15 +35,6 @@ public class GroundTruthRepository {
     }
 
     public GroundTruth forStep(long caseId, InterpretationStep step) {
-        // The engine locates the T wave in order to measure QT but never
-        // measures its polarity, so there is no computed answer to compare
-        // against. Said plainly rather than guessed at from the diagnosis label.
-        if ("t_waves".equals(step.concept())) {
-            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
-                    "The measurement engine does not yet compute T-wave polarity, so this step "
-                            + "cannot be marked. It is skipped rather than guessed.");
-        }
-
         String name = parameterName(step);
         Optional<Served> served = load(caseId, name);
 

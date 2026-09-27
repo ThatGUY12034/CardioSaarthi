@@ -193,6 +193,43 @@ ST_THRESH_V2V3_MM = 2.0
 ST_DEPRESSION_THRESH_MM = 0.5
 
 # ---------------------------------------------------------------------------
+# T wave
+# ---------------------------------------------------------------------------
+# Amplitude at the T peak against the same PR-segment baseline the ST
+# measurement uses, so the two are on one reference.
+#
+# Below this magnitude the T wave is called flat rather than given a direction:
+# the sign of a 50 microvolt deflection is noise, and reporting it as an
+# inversion would be inventing a finding.
+T_FLAT_MV = 0.10
+
+# A biphasic T wave crosses the baseline within its own span. Both excursions
+# have to clear the flat threshold, or every slightly noisy T wave becomes
+# biphasic.
+T_BIPHASIC_MIN_MV = 0.10
+
+# The T wave is searched from here to the T offset. Starting at the J point
+# would include the ST segment, whose deviation is a separate finding measured
+# separately.
+T_WINDOW_START_MS = 60
+
+# Leads where an inverted T wave is not abnormal.
+#
+# aVR looks at the heart from the opposite direction, so its T wave is normally
+# inverted. III and V1 are commonly inverted in healthy people. Calling those
+# abnormal would flag a large share of normal recordings.
+#
+# PROVISIONAL: this is a clinical judgement and belongs with the other questions
+# for nursing faculty. V2 is deliberately not excluded, though inversion there
+# is a recognised normal variant in young women, because treating it as normal
+# by default would hide anterior ischaemia.
+T_NORMALLY_INVERTED_LEADS = ("aVR", "III", "V1")
+
+# Fraction of usable beats that must yield a T amplitude before the lead is
+# reported at all.
+T_MIN_BEAT_FRACTION = 0.5
+
+# ---------------------------------------------------------------------------
 # Aggregation and confidence
 # ---------------------------------------------------------------------------
 # Spread is reported as MAD = median(|x_i - median(x)|), not standard deviation:
@@ -258,4 +295,6 @@ TARGET_QRS_BOUNDARY_MAE_MS = 10.0
 TARGET_T_OFFSET_MAE_MS = 25.0
 TARGET_P_ONSET_MAE_MS = 15.0
 
-SCHEMA_VERSION = "1.0.0"
+# 1.1.0 added the per-lead T-wave measures and the case-level finding.
+# Additive, so a 1.0.0 result still reads; it simply has no T-wave data.
+SCHEMA_VERSION = "1.1.0"

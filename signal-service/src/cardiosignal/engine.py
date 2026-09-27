@@ -25,6 +25,7 @@ from cardiosignal.measure import intervals as intervals_module
 from cardiosignal.measure import rate as rate_module
 from cardiosignal.measure import rhythm as rhythm_module
 from cardiosignal.measure import st as st_module
+from cardiosignal.measure import twave as twave_module
 from cardiosignal.preprocess.filters import diagnostic_filter
 from cardiosignal.types import (
     MeasurementResult,
@@ -111,6 +112,13 @@ def measure_record(recording: Recording) -> MeasurementResult:
     result.st = st_module.measure_all(filtered, beats, fs, leads, sqi)
     result.territories = st_module.summarise_territories(result.st)
 
+    # The T wave, per lead. The engine has always located it in order to measure
+    # the QT interval and never measured it, which left step 8 of the nine-step
+    # reading with no computed answer and therefore unmarkable.
+    result.t_waves = twave_module.measure_all(filtered, beats, leads, fs)
+    result.t_wave_finding = twave_module.summarise(result.t_waves)
+    result.t_wave_inverted_leads = twave_module.abnormally_inverted(result.t_waves)
+
     _finalise(result, quality)
     return result
 
@@ -153,6 +161,13 @@ def _finalise(result: MeasurementResult, quality) -> None:
         # detail belongs in the per-case record, not in the tally.
         result.warnings.append(
             f"pr_unstable_waves_may_not_be_p_waves:mad_{result.pr_interval.mad:.0f}ms"
+        )
+
+    if result.t_wave_inverted_leads:
+        # A finding, not a fault: reported so a reviewer sees it without opening
+        # the per-lead detail.
+        result.warnings.append(
+            "t_wave_inverted_in:" + ",".join(result.t_wave_inverted_leads)
         )
 
     if (

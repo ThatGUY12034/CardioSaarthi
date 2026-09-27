@@ -29,7 +29,8 @@ public final class Parameters {
     private static final Map<String, Set<String>> CATEGORIES = Map.of(
             "rhythm", Set.of("REGULAR", "REGULARLY_IRREGULAR", "IRREGULARLY_IRREGULAR", "INDETERMINATE"),
             "axis", Set.of("NORMAL", "LEFT", "RIGHT", "EXTREME", "INDETERMINATE"),
-            "p_waves", Set.of("PRESENT", "ABSENT"));
+            "p_waves", Set.of("PRESENT", "ABSENT"),
+            "t_waves", Set.of("UPRIGHT", "INVERTED", "FLAT", "BIPHASIC"));
 
     private static final String ST = "st_segment";
 

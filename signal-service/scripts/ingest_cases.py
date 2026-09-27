@@ -14,10 +14,10 @@ and counted as protected, because re-ingesting would cascade their corrections
 away and those corrections are the validation evidence for the engine. Pass
 `--replace-reviewed` to override that, which is almost never what you want.
 
-A generated narrative is carried across a replacement rather than lost with it.
-Everything else in a case row is derived from the signal and can be rebuilt by
-re-running the pipeline; a narrative cost a model call and a re-measurement has
-no bearing on it.
+Re-measuring updates the case row in place and replaces only the rows derived
+from the signal. The case id does not change, so everything attached to it
+survives: the generated narrative, the review decision, faculty corrections, and
+any student session worked on that case.
 
 Usage::
 
@@ -201,6 +201,7 @@ def insert_case(cur, payload: dict[str, Any], *, censored: bool, images_dir: Pat
             schema_version, engine_version, computed_at, sampling_rate, n_samples,
             measurement_status, overall_confidence, n_beats, sqi_overall,
             rhythm_regularity, rr_mean_ms, axis_degrees, axis_category, warnings,
+            t_wave_finding, t_wave_inverted_leads,
             raw_measurement, image_clean_path, image_annotated_path
         ) VALUES (
             %s, %s,
@@ -208,6 +209,7 @@ def insert_case(cur, payload: dict[str, Any], *, censored: bool, images_dir: Pat
             %s, %s, %s, %s, %s,
             %s, %s, %s, %s,
             %s, %s, %s, %s, %s,
+            %s, %s,
             %s, %s, %s
         )
         RETURNING id
@@ -234,13 +236,20 @@ def insert_case(cur, payload: dict[str, Any], *, censored: bool, images_dir: Pat
             axis.get("degrees"),
             axis.get("category"),
             payload.get("warnings") or [],
+            payload.get("t_wave_finding"),
+            payload.get("t_wave_inverted_leads") or [],
             _json(payload),
             _image_path(images_dir, ecg_id, "clean"),
             _image_path(images_dir, ecg_id, "annotated"),
         ),
     )
     case_id = int(cur.fetchone()[0])
+    _insert_children(cur, case_id, payload)
+    return case_id
 
+
+def _insert_children(cur, case_id: int, payload: dict[str, Any]) -> None:
+    """The rows derived from the measurement: replaced wholesale on a re-ingest."""
     measures = []
     for name in MEASURE_NAMES:
         m = payload.get(name)
@@ -298,6 +307,31 @@ def insert_case(cur, payload: dict[str, Any], *, censored: bool, images_dir: Pat
             st_rows,
         )
 
+    t_rows = [
+        (
+            case_id,
+            t["lead"],
+            t.get("amplitude_mv"),
+            t.get("mad_mv"),
+            t.get("finding", "FLAT"),
+            t.get("normally_inverted", False),
+            t.get("n_beats", 0),
+            t.get("confidence"),
+            t.get("status", "OK"),
+        )
+        for t in payload.get("t_waves") or []
+    ]
+    if t_rows:
+        cur.executemany(
+            """
+            INSERT INTO case_t_waves
+                (case_id, lead, amplitude_mv, mad_mv, finding, normally_inverted,
+                 n_beats, confidence, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            t_rows,
+        )
+
     links = [(case_id, code) for code in payload.get("syllabus_conditions") or []]
     if links:
         cur.executemany(
@@ -306,7 +340,66 @@ def insert_case(cur, payload: dict[str, Any], *, censored: bool, images_dir: Pat
             links,
         )
 
-    return case_id
+
+def update_case(cur, case_id: int, payload: dict[str, Any], *, censored: bool, images_dir: Path) -> None:
+    """Re-measure an existing case without destroying what hangs off it.
+
+    The case row is updated and its derived children are replaced. Everything
+    that is not derived from the signal -- the narrative, the review decision,
+    faculty corrections, student sessions -- is attached to the case id and
+    survives because the id does.
+    """
+    ecg_id = int(payload["ecg_id"])
+    rhythm = payload.get("rhythm") or {}
+    axis = payload.get("axis") or {}
+    quality = payload.get("quality") or {}
+
+    cur.execute(
+        """
+        UPDATE cases SET
+            age = %s, age_censored = %s, sex = %s, scp_codes = %s, diagnostic_labels = %s,
+            schema_version = %s, engine_version = %s, computed_at = %s,
+            sampling_rate = %s, n_samples = %s,
+            measurement_status = %s, overall_confidence = %s, n_beats = %s, sqi_overall = %s,
+            rhythm_regularity = %s, rr_mean_ms = %s, axis_degrees = %s, axis_category = %s,
+            warnings = %s, t_wave_finding = %s, t_wave_inverted_leads = %s,
+            raw_measurement = %s, image_clean_path = %s, image_annotated_path = %s
+        WHERE id = %s
+        """,
+        (
+            payload.get("age"),
+            censored,
+            payload.get("sex"),
+            _json(payload.get("scp_codes") or {}),
+            payload.get("diagnostic_labels") or [],
+            payload["schema_version"],
+            payload["engine_version"],
+            payload["computed_at"],
+            payload["sampling_rate"],
+            payload["n_samples"],
+            payload["status"],
+            payload["overall_confidence"],
+            len(payload.get("beats") or []),
+            quality.get("sqi_overall"),
+            rhythm.get("regularity"),
+            rhythm.get("rr_mean_ms"),
+            axis.get("degrees"),
+            axis.get("category"),
+            payload.get("warnings") or [],
+            payload.get("t_wave_finding"),
+            payload.get("t_wave_inverted_leads") or [],
+            _json(payload),
+            _image_path(images_dir, ecg_id, "clean"),
+            _image_path(images_dir, ecg_id, "annotated"),
+            case_id,
+        ),
+    )
+
+    # The measurement tables refuse UPDATE -- a computed value is evidence and is
+    # not edited in place -- so the old rows are removed and the new ones written.
+    for table in ("case_measurements", "case_st_deviations", "case_t_waves", "case_conditions"):
+        cur.execute(f"DELETE FROM {table} WHERE case_id = %s", (case_id,))
+    _insert_children(cur, case_id, payload)
 
 
 def main() -> None:
@@ -346,7 +439,7 @@ def main() -> None:
     if not args.database_url:
         sys.exit("no database URL: set CARDIO_DATABASE_URL or pass --database-url")
 
-    inserted = replaced = protected = narratives_kept = 0
+    inserted = replaced = protected = 0
     with _connect(args.database_url) as conn, conn.cursor() as cur:
         n_conditions = seed_conditions(cur)
         print(f"conditions seeded: {n_conditions}")
@@ -357,33 +450,29 @@ def main() -> None:
             source = payload.get("source", "ptbxl")
 
             existing = _existing_case(cur, source, ecg_id)
-            carried_narrative = None
             if existing is not None:
                 case_id, n_reviews, n_corrections = existing
                 touched = n_reviews or n_corrections
                 if touched and not args.replace_reviewed:
                     protected += 1
                     continue
-                # A narrative costs an API call and is not reproducible from the
-                # signal, unlike every other column here. Carried across the
-                # replacement rather than cascaded away, because re-measuring an
-                # ECG is not a reason to re-pay for writing its patient.
-                carried_narrative = _existing_narrative(cur, case_id)
-                cur.execute("DELETE FROM cases WHERE id = %s", (case_id,))
+
+                # The case row is updated in place and only its derived children
+                # are replaced. Deleting the case would cascade away everything
+                # else that hangs off it -- the generated narrative, faculty
+                # reviews and corrections, and any student session worked on it,
+                # which is the evidence the evaluation study rests on. None of
+                # that is reproducible from the signal, and re-measuring an ECG
+                # is not a reason to destroy it.
+                update_case(cur, case_id, payload, censored=ecg_id in censored, images_dir=args.images)
                 replaced += 1
             else:
                 inserted += 1
-
-            new_id = insert_case(cur, payload, censored=ecg_id in censored, images_dir=args.images)
-            if carried_narrative is not None:
-                _restore_narrative(cur, new_id, carried_narrative)
-                narratives_kept += 1
+                insert_case(cur, payload, censored=ecg_id in censored, images_dir=args.images)
 
         conn.commit()
 
     print(f"inserted {inserted}, replaced {replaced}, protected {protected}")
-    if narratives_kept:
-        print(f"{narratives_kept} generated narrative(s) carried across the replacement")
     if protected:
         print(
             f"{protected} case(s) already carry faculty reviews or corrections and were left "

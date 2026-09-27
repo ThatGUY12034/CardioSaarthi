@@ -65,6 +65,20 @@ class STFinding(str, Enum):
     DEPRESSION = "DEPRESSION"
 
 
+class TWaveFinding(str, Enum):
+    """What a T wave looks like in one lead.
+
+    FLAT is its own value rather than a small UPRIGHT: below about a tenth of a
+    millivolt the sign of the deflection is noise, and calling that an inversion
+    would invent a finding.
+    """
+
+    UPRIGHT = "UPRIGHT"
+    INVERTED = "INVERTED"
+    FLAT = "FLAT"
+    BIPHASIC = "BIPHASIC"
+
+
 class Flag(str, Enum):
     """Reference-range flags. Descriptive only — never a diagnosis."""
 
@@ -200,6 +214,28 @@ class STLeadMeasure(BaseModel):
     confidence: float = 0.0
 
 
+class TWaveLeadMeasure(BaseModel):
+    """The T wave in one lead.
+
+    Per lead because that is how the finding is reported and acted on: T-wave
+    inversion in V1 to V3 means something different from inversion in II, III
+    and aVF, and a single overall verdict throws that away.
+
+    @param normally_inverted whether an inverted T wave is expected here. aVR
+        looks at the heart from the opposite direction; III and V1 are commonly
+        inverted in healthy people.
+    """
+
+    lead: str
+    amplitude_mv: float | None = None  # at the T peak, against the PR baseline
+    mad_mv: float | None = None
+    finding: TWaveFinding = TWaveFinding.FLAT
+    normally_inverted: bool = False
+    n_beats: int = 0
+    confidence: float = 0.0
+    status: MeasurementStatus = MeasurementStatus.FAILED
+
+
 class TerritorySummary(BaseModel):
     territory: str
     leads: tuple[str, ...]
@@ -235,7 +271,7 @@ class MeasurementResult(BaseModel):
     # 0.1.0 carry the same fields with different statuses, and a correction
     # snapshots this value so a disagreement can always be traced to the
     # behaviour that produced it.
-    engine_version: str = "0.2.0"
+    engine_version: str = "0.3.0"
     computed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Provenance
@@ -264,6 +300,11 @@ class MeasurementResult(BaseModel):
     axis: AxisMeasure = Field(default_factory=AxisMeasure)
     st: list[STLeadMeasure] = Field(default_factory=list)
     territories: list[TerritorySummary] = Field(default_factory=list)
+    t_waves: list[TWaveLeadMeasure] = Field(default_factory=list)
+    # The case-level answer for step 8. None when too few leads could be
+    # measured to say anything, which the grader treats as not markable.
+    t_wave_finding: TWaveFinding | None = None
+    t_wave_inverted_leads: list[str] = Field(default_factory=list)
 
     beats: list[BeatFiducials] = Field(default_factory=list)
     quality: SignalQuality = Field(default_factory=SignalQuality)
@@ -324,6 +365,11 @@ class MeasurementResult(BaseModel):
         for s in self.st:
             row[f"st_{s.lead}_mm"] = s.deviation_mm
             row[f"st_{s.lead}_finding"] = s.finding.value
+        row["t_wave_finding"] = self.t_wave_finding.value if self.t_wave_finding else None
+        row["t_wave_inverted_leads"] = ";".join(self.t_wave_inverted_leads)
+        for t in self.t_waves:
+            row[f"t_{t.lead}_mv"] = t.amplitude_mv
+            row[f"t_{t.lead}_finding"] = t.finding.value
         return row
 
 
@@ -342,5 +388,7 @@ __all__ = [
     "STLeadMeasure",
     "ScalarMeasure",
     "SignalQuality",
+    "TWaveFinding",
+    "TWaveLeadMeasure",
     "TerritorySummary",
 ]

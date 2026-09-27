@@ -347,17 +347,17 @@ class GradingIntegrationTests {
     class NotGradable {
 
         @Test
-        @DisplayName("the T-wave step is not marked, because nothing computes the answer")
-        void tWaveStepIsNotGradable() {
-            // The engine locates the T wave to measure QT but never measures its
-            // polarity. Marking a student against a value the platform does not
-            // have is the failure this project exists to prevent.
+        @DisplayName("a case whose T waves could not be measured is still not marked")
+        void tWaveStepWithoutAFindingIsNotGradable() {
+            // The engine reports no finding when fewer than half the leads could
+            // be measured. Marking a student against a value the platform does
+            // not have is the failure this project exists to prevent, and that
+            // is now decided per case rather than for the step as a whole.
             long caseId = approvedCase(-2030, "REGULAR", "NORMAL");
 
             GradeResult result = grading.grade(caseId, 8, category("INVERTED"));
             assertThat(result.outcome()).isEqualTo(GradeOutcome.NOT_GRADABLE);
             assertThat(result.correct()).isFalse();
-            assertThat(result.detail()).contains("T-wave polarity");
         }
 
         @Test
@@ -398,6 +398,31 @@ class GradingIntegrationTests {
             assertThat(grading.grade(caseId, 2, category("IRREGULARLY_IRREGULAR")).correct()).isTrue();
             assertThat(grading.grade(caseId, 2, category("REGULAR")).errorLabel())
                     .isEqualTo("IRREGULAR_CALLED_REGULAR");
+        }
+
+        @Test
+        @DisplayName("a case with a measured T wave is marked like any other step")
+        void tWaveStepIsGradedWhenMeasured() {
+            long caseId = approvedCase(-2035, "REGULAR", "NORMAL");
+            db.sql("UPDATE cases SET t_wave_finding = 'INVERTED' WHERE id = :id")
+                    .param("id", caseId).update();
+
+            assertThat(grading.grade(caseId, 8, category("INVERTED")).correct()).isTrue();
+
+            GradeResult wrong = grading.grade(caseId, 8, category("UPRIGHT"));
+            assertThat(wrong.outcome()).isEqualTo(GradeOutcome.INCORRECT);
+            assertThat(wrong.errorLabel()).isEqualTo("T_INVERSION_MISSED");
+        }
+
+        @Test
+        @DisplayName("calling upright T waves inverted is its own error")
+        void tWaveFalsePositiveHasItsOwnLabel() {
+            long caseId = approvedCase(-2036, "REGULAR", "NORMAL");
+            db.sql("UPDATE cases SET t_wave_finding = 'UPRIGHT' WHERE id = :id")
+                    .param("id", caseId).update();
+
+            assertThat(grading.grade(caseId, 8, category("INVERTED")).errorLabel())
+                    .isEqualTo("T_NORMAL_CALLED_INVERTED");
         }
 
         @Test

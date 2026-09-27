@@ -37,17 +37,13 @@ public record StepView(
             "rhythm", List.of("REGULAR", "REGULARLY_IRREGULAR", "IRREGULARLY_IRREGULAR"),
             "axis", List.of("NORMAL", "LEFT", "RIGHT", "EXTREME"),
             "p_waves", List.of("PRESENT", "ABSENT"),
-            // Offered so the step can be worked through, though nothing marks it
-            // yet: the engine measures the T wave's position for the QT interval
-            // and not its polarity.
             "t_waves", List.of("UPRIGHT", "INVERTED", "FLAT", "BIPHASIC"));
 
-    private static final String NOT_GRADED =
-            "This step is not marked yet: the measurement engine does not compute T-wave polarity. "
-                    + "Answer it anyway; working through every step in order is the habit being built.";
-
     public static StepView of(InterpretationStep step) {
-        boolean gradable = !"t_waves".equals(step.concept());
+        // Every step now has a computed answer. A particular case may still be
+        // unmarkable -- too few leads measured, or the engine unsure -- but that
+        // is decided per case at grading time, not declared here for all of them.
+        boolean gradable = true;
         return new StepView(
                 step.step(),
                 step.concept(),
@@ -59,7 +55,7 @@ public record StepView(
                 // ST step's "no lead deviates" is the same kind of answer.
                 step.answerKind() != AnswerKind.CATEGORICAL,
                 gradable,
-                gradable ? null : NOT_GRADED);
+                null);
     }
 
     private static String unitFor(InterpretationStep step) {

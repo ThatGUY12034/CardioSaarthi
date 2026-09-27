@@ -142,6 +142,7 @@ public class GradingService {
             case "p_waves" -> "ABSENT".equals(expected)
                     ? "P_ABSENT_CALLED_PRESENT"
                     : "P_PRESENT_CALLED_ABSENT";
+            case "t_waves" -> tWaveError(submitted, expected);
             default -> "ANSWER_NOT_UNDERSTOOD";
         };
     }
@@ -159,6 +160,24 @@ public class GradingService {
         // irregularly irregular is fibrillation, and confusing them is a
         // different error from missing the irregularity entirely.
         return "IRREGULARITY_PATTERN_CONFUSED";
+    }
+
+    /**
+     * Which T-wave mistake this is.
+     *
+     * <p>Missing an inversion and inventing one are different errors with
+     * different consequences, and both are different again from reading a flat
+     * T wave as upright. Collapsing the third into either of the others would
+     * put the wrong lesson in front of the student.
+     */
+    private String tWaveError(String submitted, String expected) {
+        if ("INVERTED".equals(expected)) {
+            return "T_INVERSION_MISSED";
+        }
+        if ("INVERTED".equals(submitted)) {
+            return "T_NORMAL_CALLED_INVERTED";
+        }
+        return "T_MORPHOLOGY_MISREAD";
     }
 
     private String axisError(String submitted, String expected) {
