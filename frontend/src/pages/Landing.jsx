@@ -9,7 +9,7 @@ export default function Landing() {
         <div className="flex items-center gap-2.5">
           <span className="text-red-500 text-2xl drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]">❤</span>
           <span className="font-bold text-lg tracking-tight">
-            ECG<span className="text-gradient">.learn</span>
+            Cardio<span className="text-gradient">Saarthi</span>
           </span>
         </div>
         <div className="hidden md:flex gap-8 text-sm text-brand-muted">

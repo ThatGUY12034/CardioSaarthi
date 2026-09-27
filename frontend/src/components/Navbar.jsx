@@ -21,7 +21,7 @@ export default function Navbar() {
           ❤
         </span>
         <span className="font-bold text-lg tracking-tight">
-          ECG<span className="text-gradient">.learn</span>
+          Cardio<span className="text-gradient">Saarthi</span>
         </span>
       </Link>
 
