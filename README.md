@@ -148,6 +148,14 @@ That loads all 714 measured cases as `pending`. Nothing is servable until a name
 it — `v_served_measurements` returns no rows for an unapproved case, so a case cannot reach a student
 by accident.
 
+To bring the whole thing up on a laptop that has never run it — which needs the rendered images
+and a database dump copied across, because neither is in git — follow
+[docs/DEMO_SETUP.md](docs/DEMO_SETUP.md). One script does the setup:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File demo\setup.ps1
+```
+
 Configuration is one `.env` at the repository root; copy `.env.example`. Endpoints, the queue
 ordering options and the rules the server enforces are documented in
 [review-api/README.md](review-api/README.md).
