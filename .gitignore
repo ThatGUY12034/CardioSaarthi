@@ -59,3 +59,6 @@ application-secrets.properties
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Editor and tool configuration, not part of the project
+.claude/
