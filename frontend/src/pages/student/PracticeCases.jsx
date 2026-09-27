@@ -1,76 +1,140 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout";
-import CaseEcg from "../../components/CaseEcg";
-import { useState } from "react";
+import EcgImage from "../../components/EcgImage";
+import { errorMessage, getPractisableCases } from "../../api/studyApi";
 
-const MOCK_CASES = [
-  { id: 1, title: "Case 1 - Normal Sinus Rhythm", difficulty: "Easy", category: "Rhythm" },
-  { id: 2, title: "Case 2 - Atrial Fibrillation", difficulty: "Medium", category: "Rhythm" },
-  { id: 3, title: "Case 3 - Atrial Fibrillation", difficulty: "Medium", category: "Rhythm" },
-  { id: 4, title: "Case 4 - Anterior STEMI", difficulty: "Hard", category: "Ischemia" },
-  { id: 5, title: "Case 5 - Complete Heart Block", difficulty: "Hard", category: "Conduction" },
-  { id: 6, title: "Case 6 - Sinus Bradycardia", difficulty: "Medium", category: "Rhythm" },
+/**
+ * The cases a student may practise on.
+ *
+ * <p>Every one has been approved by a named reviewer. An unapproved case cannot
+ * appear here and cannot be started even if its id is typed into the address
+ * bar: the server refuses it and a database trigger refuses it again.
+ *
+ * <p>No difficulty rating is shown. The platform does not have one -- difficulty
+ * would have to come from how students actually perform, and no student has used
+ * it yet. Inventing three tiers and colouring them would be making it up.
+ */
+
+const MODES = [
+  {
+    value: "BEGINNER_TUTOR",
+    label: "Tutor",
+    blurb: "A hint on the first wrong answer, then the full explanation.",
+  },
+  {
+    value: "CLINICAL_MENTOR",
+    label: "Mentor",
+    blurb: "One attempt per step, then the explanation and move on.",
+  },
+  {
+    value: "EXAMINER",
+    label: "Examiner",
+    blurb: "No feedback until the end of the case.",
+  },
 ];
-
-const diffColor = {
-  Easy: "text-brand-success bg-brand-success/10",
-  Medium: "text-brand-warning bg-brand-warning/10",
-  Hard: "text-brand-danger bg-brand-danger/10",
-};
 
 export default function PracticeCases() {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState("All");
+  const [cases, setCases] = useState(null);
+  const [mode, setMode] = useState("BEGINNER_TUTOR");
+  const [error, setError] = useState(null);
 
-  const filtered =
-    filter === "All" ? MOCK_CASES : MOCK_CASES.filter((c) => c.difficulty === filter);
+  useEffect(() => {
+    let cancelled = false;
+    getPractisableCases()
+      .then((loaded) => {
+        if (!cancelled) setCases(loaded);
+      })
+      .catch((exception) => {
+        if (!cancelled) setError(errorMessage(exception, "Could not load the case list."));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <Layout role="STUDENT">
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold">Practice Cases</h1>
-          <p className="text-brand-muted mt-1">Choose a case to begin interpretation</p>
+          <p className="text-brand-muted mt-1">
+            Real recordings, each checked by a member of faculty before it reached you.
+          </p>
         </div>
-        <div className="flex gap-2">
-          {["All", "Easy", "Medium", "Hard"].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-lg text-sm ${
-                filter === f
-                  ? "bg-brand-primary text-white"
-                  : "bg-brand-card text-brand-muted hover:bg-brand-cardLight"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
+
+        <div>
+          <p className="text-xs text-brand-muted mb-2">How much help do you want?</p>
+          <div className="flex gap-2">
+            {MODES.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setMode(option.value)}
+                title={option.blurb}
+                className={`px-4 py-2 rounded-lg text-sm border ${
+                  mode === option.value
+                    ? "border-brand-primary text-white"
+                    : "border-white/10 text-brand-muted"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-brand-muted mt-2 max-w-xs">
+            {MODES.find((option) => option.value === mode).blurb}
+          </p>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
-        {filtered.map((c) => (
-          <div key={c.id} className="card overflow-hidden hover:border-brand-primary/50 transition-colors">
-            <CaseEcg height={140} />
-            <div className="p-5">
-              <div className="flex items-center justify-between">
-                <span className={`text-xs px-2 py-1 rounded ${diffColor[c.difficulty]}`}>
-                  {c.difficulty}
-                </span>
-                <span className="text-xs text-brand-muted">{c.category}</span>
+      {error && (
+        <div className="mt-6 rounded border border-brand-danger/40 bg-brand-danger/10 px-4 py-3 text-sm text-brand-danger">
+          {error}
+        </div>
+      )}
+
+      {cases === null ? (
+        <p className="text-brand-muted mt-8">Loading cases…</p>
+      ) : cases.length === 0 ? (
+        <div className="card p-8 mt-8 text-center">
+          <p className="font-semibold">No cases are available yet.</p>
+          <p className="text-brand-muted text-sm mt-1">
+            A case becomes available once a member of faculty has reviewed and approved it.
+          </p>
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+          {cases.map((item) => (
+            <div key={item.caseId} className="card overflow-hidden flex flex-col">
+              <EcgImage caseId={item.caseId} height={140} zoomable={false} />
+              <div className="p-5 flex-1 flex flex-col">
+                <h3 className="font-semibold">Recording {item.sourceEcgId}</h3>
+                <p className="text-xs text-brand-muted mt-1">
+                  {item.sex}
+                  {item.age ? `, ${Math.round(item.age)} years` : ""}
+                </p>
+                {/* The conditions are shown, not the diagnosis: which topics this
+                    case covers is useful for choosing what to practise, and it
+                    does not answer the case, whose reading is still the task. */}
+                {item.conditionCodes.length > 0 && (
+                  <p className="text-[11px] text-brand-muted mt-2">
+                    {item.conditionCodes.map((code) => code.replace(/_/g, " ")).join(" · ")}
+                  </p>
+                )}
+                <button
+                  onClick={() =>
+                    navigate(`/student/cases/${item.caseId}`, { state: { mode } })
+                  }
+                  className="btn-primary text-sm mt-4 w-full"
+                >
+                  Start
+                </button>
               </div>
-              <h3 className="font-semibold mt-3">{c.title}</h3>
-              <button
-                onClick={() => navigate(`/student/cases/${c.id}`)}
-                className="btn-primary w-full mt-5 text-sm"
-              >
-                Start Case
-              </button>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </Layout>
   );
 }

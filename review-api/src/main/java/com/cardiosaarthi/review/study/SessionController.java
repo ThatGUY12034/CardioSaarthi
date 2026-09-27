@@ -35,10 +35,12 @@ import com.cardiosaarthi.review.error.NotFoundException;
 public class SessionController {
 
     private final SessionService sessions;
+    private final StepRepository steps;
     private final JdbcClient db;
 
-    SessionController(SessionService sessions, JdbcClient db) {
+    SessionController(SessionService sessions, StepRepository steps, JdbcClient db) {
         this.sessions = sessions;
+        this.steps = steps;
         this.db = db;
     }
 
@@ -118,19 +120,20 @@ public class SessionController {
         return sessions.summary(id);
     }
 
-    /** The vocabulary the console needs, so its forms cannot drift from the server. */
+    /**
+     * The nine steps and what each one accepts.
+     *
+     * <p>Served rather than duplicated in the console. A client with its own copy
+     * of the rhythm options will eventually disagree with the grader about what a
+     * valid answer is, and the student is the one who finds out.
+     *
+     * <p>Tolerances are deliberately not included. Telling a student that the
+     * rate is accepted within ten percent turns the step into arithmetic on the
+     * answer rather than a measurement off the tracing.
+     */
     @GetMapping("/steps")
-    public List<InterpretationStep> steps() {
-        return db.sql("""
-                SELECT step, concept, label, answer_kind, measure, tolerance_abs, tolerance_pct
-                FROM interpretation_steps ORDER BY step
-                """)
-                .query((rs, n) -> new InterpretationStep(
-                        rs.getInt("step"), rs.getString("concept"), rs.getString("label"),
-                        AnswerKind.valueOf(rs.getString("answer_kind")), rs.getString("measure"),
-                        rs.getObject("tolerance_abs") == null ? null : rs.getDouble("tolerance_abs"),
-                        rs.getObject("tolerance_pct") == null ? null : rs.getDouble("tolerance_pct")))
-                .list();
+    public List<StepView> steps() {
+        return steps.all().stream().map(StepView::of).toList();
     }
 
     // -----------------------------------------------------------------------

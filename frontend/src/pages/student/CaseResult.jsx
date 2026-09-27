@@ -1,99 +1,153 @@
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import Layout from "../../components/Layout";
-import CaseEcg from "../../components/CaseEcg";
+import EcgImage from "../../components/EcgImage";
+import { errorMessage, getSummary } from "../../api/studyApi";
 
-const STEP_RESULTS = [
-  { name: "Rate", yourAnswer: "110 bpm", correct: "77 bpm", score: 0 },
-  { name: "Rhythm", yourAnswer: "Irregular", correct: "Regular", score: 0 },
-  { name: "P waves", yourAnswer: "Absent", correct: "Present, upright", score: 0 },
-  { name: "PR interval", yourAnswer: "Not measurable", correct: "164 ms", score: 60 },
-  { name: "QRS complex", yourAnswer: "Narrow", correct: "180 ms (wide)", score: 40 },
-  { name: "ST segment", yourAnswer: "Normal", correct: "Anterior elevation V1–V3", score: 0 },
-  { name: "T waves", yourAnswer: "Normal", correct: "Inverted in V1–V3", score: 30 },
-];
-
+/**
+ * How the case went.
+ *
+ * <p>Scored on first-attempt answers out of the steps that could be marked,
+ * which is a smaller number than nine: the T-wave step has no computed answer
+ * yet, and a step the engine was unsure of is not marked either. Dividing by
+ * nine regardless would quietly penalise a student for a gap in the platform.
+ *
+ * <p>The annotated ECG is shown here and only here. During the case it would
+ * mark the boundaries the student is being asked to find.
+ */
 export default function CaseResult() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const answers = location.state?.answers || {};
+  const sessionId = location.state?.sessionId;
 
-  const totalScore = Math.round(
-    STEP_RESULTS.reduce((sum, s) => sum + s.score, 0) / STEP_RESULTS.length
-  );
+  const [summary, setSummary] = useState(null);
+  const [error, setError] = useState(null);
+
+  // Derived, not set in the effect: reaching this page without a finished
+  // session is a fact about the navigation, known before any render.
+  const missingSession = !sessionId;
+
+  useEffect(() => {
+    if (!sessionId) {
+      return undefined;
+    }
+    let cancelled = false;
+    getSummary(sessionId)
+      .then((loaded) => {
+        if (!cancelled) setSummary(loaded);
+      })
+      .catch((exception) => {
+        if (!cancelled) setError(errorMessage(exception, "Could not load the results."));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  // One row per step: the first attempt is what counts, later ones are shown
+  // underneath so a student can see where the reasoning turned around.
+  const firstAttempts = summary?.steps.filter((step) => step.attempt === 1) ?? [];
+  const graded = firstAttempts.filter((step) => step.errorLabel !== "NOT_GRADED");
+  const score = summary && graded.length
+    ? Math.round((summary.correctFirstTime / graded.length) * 100)
+    : null;
 
   return (
     <Layout role="STUDENT">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <button
             onClick={() => navigate("/student/cases")}
             className="text-xs text-brand-muted hover:text-white"
           >
-            ← Back to Cases
+            ← Back to cases
           </button>
-          <h1 className="text-2xl font-bold mt-1">Case {id} — Results</h1>
+          <h1 className="text-2xl font-bold mt-1">Recording {id} — results</h1>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-brand-muted">Your Score</p>
-          <p
-            className={`text-4xl font-bold ${
-              totalScore >= 70
-                ? "text-brand-success"
-                : totalScore >= 40
-                ? "text-brand-warning"
-                : "text-brand-danger"
-            }`}
-          >
-            {totalScore}%
-          </p>
-        </div>
+        {score !== null && (
+          <div className="text-right">
+            <p className="text-xs text-brand-muted">Right first time</p>
+            <p
+              className={`text-4xl font-bold ${
+                score >= 80
+                  ? "text-brand-success"
+                  : score >= 50
+                    ? "text-brand-warning"
+                    : "text-brand-danger"
+              }`}
+            >
+              {score}%
+            </p>
+            <p className="text-[11px] text-brand-muted">
+              {summary.correctFirstTime} of {graded.length} marked steps
+            </p>
+          </div>
+        )}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6 mt-6">
-        <div className="lg:col-span-2 card p-5">
-          <CaseEcg height={340} label="Reference ECG" />
+      {(error || missingSession) && (
+        <div className="mt-6 rounded border border-brand-danger/40 bg-brand-danger/10 px-4 py-3 text-sm text-brand-danger">
+          {error || "This page needs a finished case. Start one from the case list."}
         </div>
+      )}
 
-        <div className="card p-5">
-          <h3 className="font-semibold mb-4">Step-wise Feedback</h3>
-          <ul className="space-y-3">
-            {STEP_RESULTS.map((s) => (
-              <li key={s.name} className="border-b border-white/5 pb-3 last:border-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{s.name}</span>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      s.score >= 70
-                        ? "bg-brand-success/20 text-brand-success"
-                        : s.score >= 40
-                        ? "bg-brand-warning/20 text-brand-warning"
-                        : "bg-brand-danger/20 text-brand-danger"
-                    }`}
-                  >
-                    {s.score}%
-                  </span>
+      {summary && (
+        <div className="grid lg:grid-cols-[1fr_22rem] gap-6 mt-8">
+          <div className="space-y-2">
+            {firstAttempts.map((step) => {
+              const retries = summary.steps.filter(
+                (other) => other.step === step.step && other.attempt > 1,
+              );
+              return (
+                <div key={step.step} className="card p-4">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="font-medium text-sm">
+                      {step.step}. {step.label}
+                    </span>
+                    <span
+                      className={`text-xs ${
+                        step.correct ? "text-brand-success" : "text-brand-warning"
+                      }`}
+                    >
+                      {step.correct ? "correct" : (step.errorLabel || "not marked")
+                        .replace(/_/g, " ")
+                        .toLowerCase()}
+                    </span>
+                  </div>
+                  {step.feedback && (
+                    <p className="text-xs text-brand-muted mt-2">{step.feedback}</p>
+                  )}
+                  {retries.map((retry) => (
+                    <p key={retry.attempt} className="text-xs text-brand-muted mt-2 pl-3 border-l border-white/10">
+                      Attempt {retry.attempt}: {retry.correct ? "correct" : "still not right"}
+                      {retry.feedback ? ` — ${retry.feedback}` : ""}
+                    </p>
+                  ))}
                 </div>
-                <div className="text-xs mt-1 space-y-0.5">
-                  <p className="text-brand-muted">
-                    Your answer: <span className="text-white">{answers[s.name] || s.yourAnswer}</span>
-                  </p>
-                  <p className="text-brand-muted">
-                    Correct: <span className="text-brand-accent">{s.correct}</span>
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
+              );
+            })}
+          </div>
 
-          <button
-            onClick={() => navigate("/student/cases")}
-            className="btn-primary w-full mt-6 text-sm"
-          >
-            Next Case →
-          </button>
+          <div className="space-y-4">
+            <div className="card overflow-hidden">
+              <EcgImage
+                caseId={Number(id)}
+                kind="annotated"
+                height={260}
+                label={`Recording ${id}, annotated`}
+              />
+              <p className="px-4 py-3 text-[11px] text-brand-muted">
+                The same recording with the boundaries the engine measured from. Shown now rather
+                than during the case, where it would mark the points you were asked to find.
+              </p>
+            </div>
+            <button onClick={() => navigate("/student/cases")} className="btn-primary text-sm w-full">
+              Another case
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </Layout>
   );
 }
