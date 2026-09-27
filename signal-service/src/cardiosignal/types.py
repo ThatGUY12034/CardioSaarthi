@@ -230,7 +230,12 @@ class MeasurementResult(BaseModel):
     """
 
     schema_version: str = config.SCHEMA_VERSION
-    engine_version: str = "0.1.0"
+    # Bumped to 0.2.0 when the P-wave evidence gates were extended to the P
+    # duration and the diagnosis-conflict rule was added. Stored results from
+    # 0.1.0 carry the same fields with different statuses, and a correction
+    # snapshots this value so a disagreement can always be traced to the
+    # behaviour that produced it.
+    engine_version: str = "0.2.0"
     computed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Provenance

@@ -164,6 +164,38 @@ def _finalise(result: MeasurementResult, quality) -> None:
         if ratio > config.QT_MAX_RR_FRACTION:
             result.warnings.append(f"qt_over_extended:qt_is_{ratio:.0%}_of_rr")
 
+    # Where the computed signal and the inherited diagnosis disagree.
+    #
+    # Atrial fibrillation and flutter are defined by the absence of organised P
+    # waves, so a PR interval or P duration measured on such a record is a claim
+    # the cardiologist's label contradicts. Three atrial fibrillation records in
+    # the case bank produced exactly that, and two of them had a clean P wave
+    # before nearly every QRS -- the engine was not malfunctioning, it was
+    # measuring something real that the label says should not be there.
+    #
+    # So neither side wins automatically. The value is left exactly as computed
+    # and withheld for a human to settle. Rewriting the measurement to match the
+    # label would let an inherited diagnosis overwrite a computed fact, which is
+    # the one thing this system is built not to do.
+    conflicting_diagnoses = [
+        code for code in config.P_ABSENT_DIAGNOSES if code in result.scp_codes
+    ]
+    if conflicting_diagnoses:
+        withheld = [
+            name
+            for name in ("pr_interval", "p_duration")
+            if getattr(result, name).status is MeasurementStatus.OK
+        ]
+        for name in withheld:
+            getattr(result, name).status = MeasurementStatus.NEEDS_REVIEW
+        if withheld:
+            result.warnings.append(
+                "diagnosis_conflict:{}_with_{}".format(
+                    "_".join(code.lower() for code in conflicting_diagnoses),
+                    "_and_".join(withheld),
+                )
+            )
+
     # The gate. Anything below the bar is withheld from the student bank until a
     # faculty reviewer has corrected it -- see the review queue in week 4.
     # PR and QT count here because they are graded steps: an unreliable value
@@ -173,6 +205,7 @@ def _finalise(result: MeasurementResult, quality) -> None:
         or result.heart_rate.status is not MeasurementStatus.OK
         or result.qrs_duration.status is not MeasurementStatus.OK
         or result.pr_interval.status is MeasurementStatus.NEEDS_REVIEW
+        or result.p_duration.status is MeasurementStatus.NEEDS_REVIEW
         or result.qt_interval.status is MeasurementStatus.NEEDS_REVIEW
     )
     result.status = MeasurementStatus.NEEDS_REVIEW if review_needed else MeasurementStatus.OK

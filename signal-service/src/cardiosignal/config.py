@@ -140,6 +140,20 @@ QRS_NORMAL_MS = (70, 110)
 # catch this (a 44 ms spread on a 276 ms interval still scores 0.90), so the
 # gate has to be absolute.
 PR_MAX_MAD_MS = 20.0
+
+# P duration rests on the same P-wave identification as the PR interval, so it
+# inherits the same evidence gates. Its own spread threshold is wider: a P
+# duration is a boundary-to-boundary width and scatters more than an
+# onset-to-onset delay does.
+P_DURATION_MAX_MAD_MS = 25.0
+
+# Rhythms defined by the absence of organised P waves. If the engine still
+# produces a PR interval or P duration on a record carrying one of these
+# inherited diagnoses, the computed signal and the cardiologist's label
+# disagree. Neither is rewritten -- the value is withheld for a human to
+# settle, because a label is not a measurement and a measurement is not a
+# diagnosis.
+P_ABSENT_DIAGNOSES = ("AFIB", "AFLT")
 # ...and the P wave must actually be present on most beats before any PR
 # interval is served at all.
 PR_MIN_P_FRACTION = 0.6

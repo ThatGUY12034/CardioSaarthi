@@ -111,6 +111,42 @@ def per_beat_qtc(
     return out
 
 
+def _gate_on_p_wave_evidence(
+    measure: ScalarMeasure,
+    *,
+    p_present: bool,
+    p_fraction: float,
+    regularity: Regularity | None,
+    max_mad_ms: float,
+) -> None:
+    """Withhold a measure that depends on P waves the signal does not support.
+
+    Shared by the PR interval and the P duration because they rest on the same
+    identification: if the P waves are not trustworthy, neither number is, and
+    letting one through while withholding the other would be arbitrary.
+
+    Mutates `measure` in place, and only ever from OK to NEEDS_REVIEW. The value
+    itself is never touched -- the engine's number stays the engine's number,
+    and all that changes is whether it may be served without a human looking
+    first.
+    """
+    if measure.status is MeasurementStatus.NOT_MEASURABLE:
+        return
+
+    if p_present and p_fraction < config.PR_MIN_P_FRACTION:
+        measure.status = MeasurementStatus.NEEDS_REVIEW
+    if measure.mad is not None and measure.mad > max_mad_ms:
+        measure.status = MeasurementStatus.NEEDS_REVIEW
+    if regularity is Regularity.IRREGULARLY_IRREGULAR:
+        # These measures presume P waves conducting to the ventricles at a fixed
+        # delay. An irregularly irregular ventricular response says they are
+        # not. The spread gate alone misses this: fibrillatory waves can land at
+        # a *consistent* distance before each QRS purely by chance, and six
+        # atrial fibrillation records in the case bank produced exactly that --
+        # a steady, entirely fictional PR interval.
+        measure.status = MeasurementStatus.NEEDS_REVIEW
+
+
 def measure_all(
     beats: Sequence[BeatFiducials],
     fs: int = config.FS,
@@ -138,28 +174,34 @@ def measure_all(
         # failure, which is not the same statement as "there is no P wave".
         pr = ScalarMeasure(unit="ms", status=MeasurementStatus.FAILED)
 
-    # Two absolute gates on top of the relative confidence score. Without them
-    # an atrial fibrillation record yields a confident PR interval measured off
+    # Absolute gates on top of the relative confidence score. Without them an
+    # atrial fibrillation record yields a confident PR interval measured off
     # fibrillatory waves -- the exact failure that would mark a student's
     # correct answer ("no PR interval, this is AF") wrong.
-    if pr.status is not MeasurementStatus.NOT_MEASURABLE:
-        if p_present and p_fraction < config.PR_MIN_P_FRACTION:
-            pr.status = MeasurementStatus.NEEDS_REVIEW
-        if pr.mad is not None and pr.mad > config.PR_MAX_MAD_MS:
-            pr.status = MeasurementStatus.NEEDS_REVIEW
-        if regularity is Regularity.IRREGULARLY_IRREGULAR:
-            # A PR interval presumes P waves conducting to the ventricles at a
-            # fixed delay. An irregularly irregular ventricular response says
-            # they are not. The spread gate alone misses this: fibrillatory
-            # waves can land at a *consistent* distance before each QRS purely
-            # by chance, and six atrial fibrillation records in the case bank
-            # produced exactly that -- a steady, entirely fictional PR interval.
-            pr.status = MeasurementStatus.NEEDS_REVIEW
+    _gate_on_p_wave_evidence(
+        pr,
+        p_present=p_present,
+        p_fraction=p_fraction,
+        regularity=regularity,
+        max_mad_ms=config.PR_MAX_MAD_MS,
+    )
 
     qrs = robust_scalar(per_beat_qrs(beats, fs), "ms", sqi, config.QRS_NORMAL_MS)
     qt = robust_scalar(per_beat_qt(beats, fs), "ms", sqi)
     p_dur = robust_scalar(
         per_beat_p_duration(beats, fs), "ms", sqi, (60.0, 120.0), not_measurable=not p_present
+    )
+
+    # The same gates, for the same reason. A P duration is only as trustworthy
+    # as the P-wave identification underneath it, and until this was added the
+    # engine served 276 confident P durations on records where it had itself
+    # reported the P wave absent in some beats -- one of them in 71% of them.
+    _gate_on_p_wave_evidence(
+        p_dur,
+        p_present=p_present,
+        p_fraction=p_fraction,
+        regularity=regularity,
+        max_mad_ms=config.P_DURATION_MAX_MAD_MS,
     )
 
     # A QT longer than ~65% of the cycle is an over-extended T offset, not a

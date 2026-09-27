@@ -324,3 +324,140 @@ def test_territory_needs_two_contiguous_leads():
 def test_territories_cover_the_expected_leads():
     assert config.TERRITORIES["inferior"] == ("II", "III", "aVF")
     assert config.TERRITORIES["anterior"] == ("V1", "V2", "V3", "V4")
+
+
+def _p_wave_beats(n: int, present_upto: int, fs: int, p_width_ms: float = 100.0) -> list:
+    """`n` beats, the first `present_upto` of which carry a P wave."""
+    from cardiosignal.types import BeatFiducials
+    from cardiosignal.types import PWaveStatus as P
+
+    beats = []
+    for i in range(n):
+        r = int((i + 1) * 0.8 * fs)
+        qrs_on = r - int(0.04 * fs)
+        present = i < present_upto
+        p_offset = qrs_on - int(0.02 * fs)
+        beats.append(
+            BeatFiducials(
+                beat_index=i,
+                r_index=r,
+                p_onset=p_offset - int(p_width_ms / 1000 * fs) if present else None,
+                p_offset=p_offset if present else None,
+                p_status=P.PRESENT if present else P.ABSENT,
+                qrs_onset=qrs_on,
+                qrs_offset=r + int(0.05 * fs),
+            )
+        )
+    return beats
+
+
+def test_p_duration_is_withheld_when_most_beats_have_no_p_wave():
+    """A P duration is only as trustworthy as the P wave underneath it.
+
+    Until this gate existed the engine served 276 confident P durations on
+    records where it had itself reported the P wave absent in some beats, one of
+    them in 71% of them. The PR interval was gated and the P duration was not,
+    which was arbitrary: both rest on the same identification.
+    """
+    from cardiosignal.measure import intervals
+
+    fs = config.FS
+    sparse = intervals.measure_all(_p_wave_beats(10, 3, fs), fs, sqi=0.99)
+    assert sparse["p_duration"].status is MeasurementStatus.NEEDS_REVIEW
+
+    plentiful = intervals.measure_all(_p_wave_beats(10, 10, fs), fs, sqi=0.99)
+    assert plentiful["p_duration"].status is MeasurementStatus.OK
+
+
+def test_p_duration_is_withheld_when_the_rhythm_is_irregularly_irregular():
+    from cardiosignal.measure import intervals
+    from cardiosignal.types import Regularity
+
+    fs = config.FS
+    beats = _p_wave_beats(10, 10, fs)
+
+    steady = intervals.measure_all(beats, fs, sqi=0.99, regularity=Regularity.REGULAR)
+    fibrillating = intervals.measure_all(
+        beats, fs, sqi=0.99, regularity=Regularity.IRREGULARLY_IRREGULAR
+    )
+
+    assert steady["p_duration"].status is MeasurementStatus.OK
+    assert fibrillating["p_duration"].status is MeasurementStatus.NEEDS_REVIEW
+    assert fibrillating["p_duration"].value == steady["p_duration"].value, (
+        "withholding a measure must never change it"
+    )
+
+
+def test_p_duration_with_wild_spread_is_withheld():
+    from cardiosignal.measure import intervals
+    from cardiosignal.types import BeatFiducials
+    from cardiosignal.types import PWaveStatus as P
+
+    fs = config.FS
+
+    def beat(i: int, width_ms: float) -> BeatFiducials:
+        r = int((i + 1) * 0.8 * fs)
+        qrs_on = r - int(0.04 * fs)
+        p_offset = qrs_on - int(0.02 * fs)
+        return BeatFiducials(
+            beat_index=i,
+            r_index=r,
+            p_onset=p_offset - int(width_ms / 1000 * fs),
+            p_offset=p_offset,
+            p_status=P.PRESENT,
+            qrs_onset=qrs_on,
+            qrs_offset=r + int(0.05 * fs),
+        )
+
+    erratic = [beat(i, w) for i, w in enumerate([100, 40, 160, 50, 150, 45, 170])]
+    assert (
+        intervals.measure_all(erratic, fs, sqi=0.99)["p_duration"].status
+        is MeasurementStatus.NEEDS_REVIEW
+    )
+
+
+def test_atrial_fibrillation_label_withholds_p_wave_measures_without_changing_them():
+    """The computed signal and the inherited diagnosis can disagree.
+
+    Two atrial fibrillation records in the case bank carried a clean P wave
+    before nearly every QRS. The engine was not malfunctioning; it measured
+    something real that the label says should not be there. Neither side wins
+    automatically: the value stays exactly as computed and is withheld for a
+    human to settle, because rewriting a measurement to match a label would let
+    an inherited diagnosis overwrite a computed fact.
+    """
+    import numpy as np
+
+    from cardiosignal.engine import measure_record
+    from cardiosignal.types import Recording
+
+    rng = np.random.default_rng(11)
+    fs = config.FS
+    t = np.arange(config.N_SAMPLES) / fs
+    signal = np.zeros((config.N_SAMPLES, len(config.LEADS)))
+    for beat_time in np.arange(0.6, t[-1], 0.8):
+        centre = int(beat_time * fs)
+        span = slice(max(centre - 25, 0), min(centre + 25, config.N_SAMPLES))
+        signal[span, :] += np.hanning(span.stop - span.start)[:, None]
+        p_centre = int((beat_time - 0.16) * fs)
+        p_span = slice(max(p_centre - 25, 0), min(p_centre + 25, config.N_SAMPLES))
+        signal[p_span, :] += 0.15 * np.hanning(p_span.stop - p_span.start)[:, None]
+    signal += rng.normal(0, 0.005, signal.shape)
+
+    def measure(scp_codes: dict[str, float]):
+        return measure_record(
+            Recording(ecg_id=1, signal=signal, sampling_rate=fs, scp_codes=scp_codes)
+        )
+
+    plain = measure({"NORM": 100.0})
+    flagged = measure({"AFIB": 100.0})
+
+    # Same signal in, so the numbers must be identical.
+    assert flagged.pr_interval.value == plain.pr_interval.value
+    assert flagged.p_duration.value == plain.p_duration.value
+
+    # But nothing P-derived may be served on a record labelled as fibrillating.
+    assert flagged.pr_interval.status is not MeasurementStatus.OK
+    assert flagged.p_duration.status is not MeasurementStatus.OK
+    assert any(w.startswith("diagnosis_conflict:afib") for w in flagged.warnings), flagged.warnings
+    assert flagged.status is MeasurementStatus.NEEDS_REVIEW
