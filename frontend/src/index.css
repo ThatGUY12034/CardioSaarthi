@@ -21,7 +21,11 @@
    BASE
    ================================ */
 html, body, #root {
-  height: 100%;
+  /* min-height, not height. A fixed 100% pins #root to exactly one viewport,
+     so any page taller than the screen -- the review queue, a long case list --
+     overflows a box that cannot grow, and scrolling past it shows empty
+     background instead of the rest of the page. */
+  min-height: 100%;
   background-color: #070d1f;
   color: #e5e7eb;
   font-family: "Inter", system-ui, sans-serif;

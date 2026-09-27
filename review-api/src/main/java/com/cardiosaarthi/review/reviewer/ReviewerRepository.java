@@ -1,5 +1,6 @@
 package com.cardiosaarthi.review.reviewer;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -52,9 +53,24 @@ public class ReviewerRepository {
                 .optional();
     }
 
+    /** Every reviewer, for the admin listing. No hash is selected. */
+    public List<Reviewer> findAll() {
+        return db.sql("SELECT " + COLUMNS + " FROM reviewers ORDER BY role, full_name")
+                .query(Reviewer.class)
+                .list();
+    }
+
+    /** Set separately from the upsert so a blank value never clears an existing id. */
+    public void setCollegeId(long id, String collegeId) {
+        db.sql("UPDATE reviewers SET college_id = :collegeId WHERE id = :id")
+                .param("collegeId", collegeId)
+                .param("id", id)
+                .update();
+    }
+
     /**
      * Creates the account, or updates the name, role and password of an existing
-     * one. Used only by the start-up bootstrap.
+     * one. Used by the start-up bootstrap and by the admin endpoint.
      */
     public long upsert(String email, String fullName, String role, String passwordHash) {
         return db.sql("""

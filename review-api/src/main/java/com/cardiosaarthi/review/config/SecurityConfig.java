@@ -66,6 +66,10 @@ public class SecurityConfig {
                         // The one endpoint that cannot require a credential,
                         // being where credentials are exchanged for a token.
                         .requestMatchers(HttpMethod.POST, "/api/auth/login/**").permitAll()
+                        // Managing accounts is an administrator's job. Declared
+                        // here rather than checked in the controller so the rule
+                        // holds identically for a bearer token and for Basic.
+                        .requestMatchers("/api/reviewers", "/api/reviewers/**").hasRole("ADMIN")
                         // Everything else, the waveform images included. These
                         // are real patient recordings: de-identified, but not
                         // ours to leave open.

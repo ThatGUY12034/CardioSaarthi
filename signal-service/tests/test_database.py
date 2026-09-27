@@ -303,7 +303,15 @@ def test_the_latest_correction_wins_and_earlier_ones_survive(cur):
 # ---------------------------------------------------------------------------
 def test_measurement_agreement_reports_bias_and_scatter_separately(cur):
     """Two corrections of +20 ms and -20 ms are 20 ms of scatter and zero bias.
-    A view that conflated them would report 0 error and hide the problem."""
+    A view that conflated them would report 0 error and hide the problem.
+
+    v_measurement_agreement aggregates every correction in the database, which is
+    right for the engine's report card and wrong for an assertion about two
+    specific ones. Cleared inside the test transaction, so it is rolled back with
+    everything else and a real reviewer's corrections are untouched.
+    """
+    cur.execute("DELETE FROM measurement_corrections WHERE name = 'pr_interval'")
+
     case_a = _case(cur, ecg_id=-20, review_status="approved")
     case_b = _case(cur, ecg_id=-21, review_status="approved")
     reviewer_id = _reviewer(cur)
