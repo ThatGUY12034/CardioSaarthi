@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Layout from "../../components/Layout";
+import { EmptyState, InlineError, Skeleton, SkeletonRows } from "../../components/States";
 import EcgImage from "../../components/EcgImage";
 import {
   errorMessage,
@@ -220,21 +221,17 @@ export default function ReviewQueue() {
           {flash}
         </div>
       )}
-      {error && (
-        <div className="mt-6 rounded border border-brand-danger/40 bg-brand-danger/10 px-4 py-3 text-sm text-brand-danger">
-          {error}
-        </div>
-      )}
+      {error && <div className="mt-6"><InlineError message={error} /></div>}
 
       {queueLoading ? (
-        <p className="text-brand-muted mt-8">Loading the queue…</p>
+        <SkeletonRows className="mt-8" count={6} />
       ) : queue.items.length === 0 ? (
-        <div className="card p-8 mt-8 text-center">
-          <p className="font-semibold">Nothing left to review.</p>
-          <p className="text-brand-muted text-sm mt-1">
-            Every measured case has been approved, corrected or rejected.
-          </p>
-        </div>
+        <EmptyState
+          className="mt-8"
+          icon={"✓"}
+          title="Nothing left to review"
+          description="Every measured case has been approved, corrected or rejected. New cases appear here as the pipeline measures them."
+        />
       ) : (
         <div className="grid lg:grid-cols-[320px_1fr] gap-6 mt-8">
           {/* the queue */}
@@ -271,7 +268,11 @@ export default function ReviewQueue() {
 
           {/* the case */}
           {detailLoading || !shown ? (
-            <div className="card p-8 text-brand-muted">Loading case…</div>
+            <div className="card p-8 space-y-3" role="status" aria-label="Loading case">
+              <Skeleton className="h-48 w-full" />
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
           ) : (
             <div className="space-y-6">
               <div className="card overflow-hidden">

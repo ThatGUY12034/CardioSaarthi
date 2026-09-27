@@ -73,9 +73,9 @@ export function SkeletonRows({ count = 5, className = "" }) {
  * "No results" on its own leaves the person guessing whether they filtered
  * everything out or the system is empty.
  */
-export function EmptyState({ icon = "◌", title, description, action }) {
+export function EmptyState({ icon = "◌", title, description, action, className = "" }) {
   return (
-    <div className="card p-10 text-center">
+    <div className={`card p-10 text-center ${className}`}>
       <div className="text-3xl text-brand-muted/50" aria-hidden="true">
         {icon}
       </div>

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import Layout from "../../components/Layout";
 import EcgImage from "../../components/EcgImage";
 import CaseBrief from "../../components/CaseBrief";
+import { InlineError } from "../../components/States";
 import {
   errorMessage,
   finishSession,
@@ -328,9 +329,7 @@ export default function CasePractice() {
 
         <div className="space-y-4">
           {error && (
-            <div className="rounded border border-brand-danger/40 bg-brand-danger/10 px-4 py-3 text-sm text-brand-danger">
-              {error}
-            </div>
+            <InlineError message={error} />
           )}
 
           {done ? (

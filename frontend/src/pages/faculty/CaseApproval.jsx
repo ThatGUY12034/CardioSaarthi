@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Layout from "../../components/Layout";
+import { InlineError, Skeleton, SkeletonRows } from "../../components/States";
 import EcgImage from "../../components/EcgImage";
 import {
   errorMessage,
@@ -332,14 +333,10 @@ export default function CaseApproval() {
           {flash}
         </div>
       )}
-      {error && (
-        <div className="mt-6 rounded border border-brand-danger/40 bg-brand-danger/10 px-4 py-3 text-sm text-brand-danger">
-          {error}
-        </div>
-      )}
+      {error && <div className="mt-6"><InlineError message={error} /></div>}
 
       {loading ? (
-        <p className="text-brand-muted mt-8">Loading cases…</p>
+        <SkeletonRows className="mt-8" count={6} />
       ) : (
         <div className="space-y-3 mt-8">
           {queue.items.map((item) => {
@@ -370,7 +367,11 @@ export default function CaseApproval() {
 
                 {open && (
                   !shown ? (
-                    <p className="px-5 pb-5 text-brand-muted text-sm">Loading case…</p>
+                    <div className="px-5 pb-5 space-y-2" role="status" aria-label="Loading case">
+                      <Skeleton className="h-40 w-full" />
+                      <Skeleton className="h-3 w-2/3" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
                   ) : (
                     <div className="px-5 pb-5 space-y-5">
                       <EcgImage caseId={shown.id} kind="clean" height={240} className="rounded" />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Layout from "../../components/Layout";
+import { InlineError, Skeleton } from "../../components/States";
 import StatCard from "../../components/StatCard";
 import { errorMessage, getConditions, getStats } from "../../api/reviewApi";
 
@@ -42,11 +43,7 @@ export default function FacultyDashboard() {
         Case bank status and review progress. Every number here is read from the platform.
       </p>
 
-      {error && (
-        <div className="mt-6 rounded border border-brand-danger/40 bg-brand-danger/10 px-4 py-3 text-sm text-brand-danger">
-          {error}
-        </div>
-      )}
+      {error && <div className="mt-6"><InlineError message={error} /></div>}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mt-8">
         <StatCard
@@ -103,7 +100,12 @@ export default function FacultyDashboard() {
                 </span>
               </li>
             ))}
-            {emptiest.length === 0 && <li className="text-brand-muted">Loading…</li>}
+            {emptiest.length === 0 &&
+              Array.from({ length: 4 }).map((_, index) => (
+                <li key={index}>
+                  <Skeleton className="h-4 w-full" />
+                </li>
+              ))}
           </ul>
         </div>
 

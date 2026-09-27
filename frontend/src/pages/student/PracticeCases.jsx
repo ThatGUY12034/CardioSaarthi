@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout";
 import EcgImage from "../../components/EcgImage";
+import { EmptyState, InlineError, SkeletonGrid } from "../../components/States";
 import { errorMessage, getPractisableCases } from "../../api/studyApi";
 
 /**
@@ -103,21 +104,16 @@ export default function PracticeCases() {
         </div>
       </div>
 
-      {error && (
-        <div className="mt-6 rounded border border-brand-danger/40 bg-brand-danger/10 px-4 py-3 text-sm text-brand-danger">
-          {error}
-        </div>
-      )}
+      {error && <div className="mt-6"><InlineError message={error} /></div>}
 
       {cases === null ? (
-        <p className="text-brand-muted mt-8">Loading cases…</p>
+        <SkeletonGrid className="mt-8" count={6} />
       ) : cases.length === 0 ? (
-        <div className="card p-8 mt-8 text-center">
-          <p className="font-semibold">No cases are available yet.</p>
-          <p className="text-brand-muted text-sm mt-1">
-            A case becomes available once a member of faculty has reviewed and approved it.
-          </p>
-        </div>
+        <EmptyState
+          className="mt-8"
+          title="No cases are available yet"
+          description="A case becomes available once a member of faculty has reviewed and approved it. Nothing unreviewed can reach you, which is why this list can be empty while the bank is full."
+        />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
           {cases.map((item) => (
