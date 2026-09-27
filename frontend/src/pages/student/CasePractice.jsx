@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import Layout from "../../components/Layout";
 import EcgImage from "../../components/EcgImage";
 import {
@@ -139,6 +139,15 @@ export default function CasePractice() {
   const [error, setError] = useState(null);
   const [interpretation, setInterpretation] = useState("");
   const [startedAt, setStartedAt] = useState(() => Date.now());
+  const [elapsed, setElapsed] = useState(0);
+
+  // Elapsed, not remaining. A countdown measures haste rather than reading, and
+  // nothing here is failed for being slow -- but how long a case takes is worth
+  // showing, and worth recording.
+  useEffect(() => {
+    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(tick);
+  }, [startedAt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -255,13 +264,33 @@ export default function CasePractice() {
 
   return (
     <Layout role="STUDENT">
-      <div className="flex items-baseline justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold">Recording {id}</h1>
-        <span className="text-sm text-brand-muted">
-          {done ? "All nine steps done" : `Step ${session.currentStep} of ${session.totalSteps}`}
-          {" · "}
-          {human(mode)}
-        </span>
+      <nav className="text-sm text-brand-muted">
+        <Link to="/student/cases" className="hover:text-brand-text">
+          ← Practice cases
+        </Link>
+        <span className="mx-2">/</span>
+        <span className="text-brand-text">Recording {id}</span>
+      </nav>
+
+      <div className="flex items-baseline justify-between flex-wrap gap-3 mt-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Deliberately not the diagnosis. Naming the condition above the
+              trace would hand the student the answer to the step they are
+              about to be marked on. */}
+          <h1 className="text-2xl font-bold">Recording {id}</h1>
+          <span className="text-xs px-2 py-1 rounded-full bg-brand-primary/20 text-brand-accent">
+            {human(mode)}
+          </span>
+        </div>
+        <div className="flex items-center gap-4 text-sm">
+          <span className="text-brand-muted">
+            {done ? "All nine steps done" : `Step ${session.currentStep} of ${session.totalSteps}`}
+          </span>
+          <span className="tabular-nums px-3 py-1 rounded-lg bg-brand-card text-brand-muted">
+            ⏱ {String(Math.floor(elapsed / 60)).padStart(2, "0")}:
+            {String(elapsed % 60).padStart(2, "0")}
+          </span>
+        </div>
       </div>
 
       {/* Progress through the nine, so the sequence itself is visible. */}
@@ -395,6 +424,47 @@ export default function CasePractice() {
               )}
             </div>
           )}
+
+          {/* The sequence itself, always in view. A reading is done in this
+              order every time, and seeing the whole list is part of learning
+              it -- the step being answered is marked, the rest stay legible. */}
+          <div className="card p-5">
+            <h2 className="font-semibold text-sm">Guiding points</h2>
+            <p className="text-[11px] text-brand-muted mt-1">
+              Every recording is read in this order.
+            </p>
+            <ol className="mt-3 space-y-2">
+              {steps.map((step) => {
+                const passed = done || step.step < session.currentStep;
+                const here = !done && step.step === session.currentStep;
+                return (
+                  <li
+                    key={step.step}
+                    className={`flex items-center gap-2 text-sm ${
+                      here
+                        ? "text-brand-text font-medium"
+                        : passed
+                          ? "text-brand-muted"
+                          : "text-brand-muted/60"
+                    }`}
+                  >
+                    <span
+                      className={`w-4 h-4 shrink-0 rounded-full grid place-items-center text-[9px] ${
+                        passed
+                          ? "bg-brand-primary text-white"
+                          : here
+                            ? "bg-brand-primary/40 text-white"
+                            : "bg-white/10"
+                      }`}
+                    >
+                      {passed ? "✓" : step.step}
+                    </span>
+                    {step.label}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
         </div>
       </div>
     </Layout>

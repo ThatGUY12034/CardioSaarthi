@@ -13,6 +13,7 @@ import Leaderboard from "./pages/student/Leaderboard";
 
 import FacultyDashboard from "./pages/faculty/FacultyDashboard";
 import StudentPerformance from "./pages/faculty/StudentPerformance";
+import StudentProgress from "./pages/faculty/StudentProgress";
 import ReviewQueue from "./pages/faculty/ReviewQueue";
 import CaseApproval from "./pages/faculty/CaseApproval";
 
@@ -46,6 +47,7 @@ export default function App() {
       <Route element={<ProtectedRoute allowedRoles={["FACULTY"]} />}>
         <Route path="/faculty/dashboard" element={<FacultyDashboard />} />
         <Route path="/faculty/students" element={<StudentPerformance />} />
+        <Route path="/faculty/students/:id" element={<StudentProgress />} />
         <Route path="/faculty/review" element={<ReviewQueue />} />
         <Route path="/faculty/approvals" element={<CaseApproval />} />
       </Route>

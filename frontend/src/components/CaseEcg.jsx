@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axiosClient from "../api/axiosClient";
+import axiosClient, { isDemoSession } from "../api/axiosClient";
 import EcgImage from "./EcgImage";
 
 /**
@@ -25,6 +25,9 @@ import EcgImage from "./EcgImage";
 let pendingDefault = null;
 
 async function resolveDefaultCase() {
+  // Demo mode holds a token the API would reject, so asking is a round trip
+  // that can only fail. The shipped render is the answer here.
+  if (isDemoSession()) return null;
   if (!pendingDefault) {
     pendingDefault = axiosClient
       .get("/study/cases", { params: { limit: 1 } })
@@ -58,15 +61,17 @@ export default function CaseEcg({ caseId, kind = "clean", height = 200, label, c
   return (
     <figure className={`m-0 ${className}`}>
       {unavailable ? (
-        // Said plainly rather than filled with a drawing. An approved case is
-        // the only thing that may be shown, and if there is none yet that is
-        // worth knowing.
-        <div
-          className="flex items-center justify-center bg-brand-bg2 text-xs text-brand-muted rounded"
-          style={{ height }}
-        >
-          No approved recording available yet
-        </div>
+        // Still a real recording, never a drawing. The server is out of reach
+        // here -- demo mode holds no token the API would accept -- so this is
+        // the render of an approved case shipped with the app rather than
+        // fetched. A synthetic squiggle would teach a student to read a
+        // squiggle, which is the one thing this component exists to prevent.
+        <img
+          src={kind === "annotated" ? "/sample-ecg-annotated.png" : "/sample-ecg-clean.png"}
+          alt="A recorded ECG, rendered at 25 mm/s and 10 mm/mV"
+          className="rounded object-cover w-full"
+          style={{ height, maxWidth: "none" }}
+        />
       ) : resolved === null ? (
         <div className="flex items-center justify-center bg-brand-bg2 rounded" style={{ height }}>
           <div className="w-6 h-6 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" />
