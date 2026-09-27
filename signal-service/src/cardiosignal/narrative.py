@@ -52,6 +52,58 @@ ECG_CLAIM_PATTERNS = (
     re.compile(r"\b\d+(\.\d+)?\s*(mm|mv)\b", re.I),
 )
 
+# Words that give a diagnosis away even when the label's own wording is
+# avoided. Keyed by a term that appears in PTB-XL's statements, valued by what a
+# vignette must therefore not say. Deliberately blunt: a false rejection costs
+# one repair call, a leak costs the exercise.
+DIAGNOSIS_ALIASES: dict[str, tuple[str, ...]] = {
+    "fibrillation": ("fibrillation", "af", "afib", "a-fib"),
+    "flutter": ("flutter",),
+    "infarction": ("infarction", "infarct", "mi", "heart attack", "stemi", "nstemi"),
+    "ischemic": ("ischaemi", "ischemi"),
+    "injury": ("ischaemi", "ischemi"),
+    "block": ("bundle branch", "rbbb", "lbbb", "heart block", "av block", "fascicular"),
+    "hypertrophy": ("hypertrophy", "lvh", "rvh"),
+    "long qt": ("long qt", "prolonged qt", "qt prolongation", "lqts"),
+    "tachycardia": ("tachycardia", "tachyarrhythmia", "svt"),
+    "bradycardia": ("bradycardia",),
+    "enlargement": ("enlargement", "dilatation"),
+    "inversion": ("t wave inversion", "inverted t"),
+    "depression": ("st depression",),
+    "elevation": ("st elevation",),
+    "arrhythmia": ("arrhythmia", "dysrhythmia"),
+}
+
+
+def diagnosis_leaks(prose: str, diagnostic_labels: list[str]) -> list[str]:
+    """Terms in the prose that give the diagnosis away.
+
+    Section 5.4 of the brief requires that no diagnosis alias appear before the
+    final step, and a vignette is read first. A history saying "previous silent
+    inferior myocardial infarction" answers the case before the student has
+    looked at the tracing.
+
+    Checked against the aliases rather than only the label's own wording,
+    because a model that is told not to say "atrial fibrillation" will happily
+    write "AF".
+    """
+    lowered = prose.lower()
+    joined = " ".join(diagnostic_labels).lower()
+    found: list[str] = []
+
+    for trigger, aliases in DIAGNOSIS_ALIASES.items():
+        if trigger not in joined:
+            continue
+        for alias in aliases:
+            # Word-boundary matched so "mi" does not fire inside "minutes" and
+            # "af" does not fire inside "after".
+            if re.search(rf"\b{re.escape(alias)}\b", lowered):
+                found.append(alias)
+                break
+
+    return found
+
+
 SYSTEM_PROMPT = """You write short clinical vignettes for a nursing ECG teaching platform.
 
 You are given a confirmed cardiologist diagnosis for a real, de-identified ECG \
@@ -82,8 +134,11 @@ Return a single JSON object and nothing else, with these keys:
   history               relevant past history, risk factors, current medications
   examination           general examination findings excluding anything cardiac \
 rhythm related
-  vitals                object with blood_pressure (e.g. "138/86"), \
-respiratory_rate (integer), temperature_c (number), spo2_percent (integer)
+  vitals                object with blood_pressure as a "systolic/diastolic" \
+string, respiratory_rate (integer), temperature_c (number), spo2_percent \
+(integer). Choose observations that fit this particular patient. These vignettes \
+are read side by side, so identical values across different patients are \
+obviously fabricated.
   relevant_labs         object of test name to value, or an empty object
   medications           array of strings, may be empty
 
@@ -140,7 +195,13 @@ def build_user_prompt(
     return "\n".join(parts)
 
 
-def validate(narrative: dict[str, Any], *, age: float | None, sex: str | None) -> list[str]:
+def validate(
+    narrative: dict[str, Any],
+    *,
+    age: float | None,
+    sex: str | None,
+    diagnostic_labels: list[str] | None = None,
+) -> list[str]:
     """Problems that make a narrative unusable. Empty list means it passed.
 
     Returns every problem rather than the first, so one repair pass can address
@@ -190,16 +251,47 @@ def validate(narrative: dict[str, Any], *, age: float | None, sex: str | None) -
                     "heart rate is measured from the tracing and injected afterwards."
                 )
 
+    leaks = diagnosis_leaks(prose, diagnostic_labels or [])
+    if leaks:
+        problems.append(
+            "gives the diagnosis away by naming " + ", ".join(repr(term) for term in leaks)
+            + ". Write a presentation consistent with the diagnosis, never a description of it."
+        )
+
     problems.extend(_age_problems(prose, age))
 
-    if sex:
-        wrong = {"male": ("she ", "her ", "woman", "female"), "female": ("he ", "his ", "man", "male")}
-        for token in wrong.get(sex.lower(), ()):
-            if token in prose.lower():
-                problems.append(f"narrative refers to a {sex} patient as {token.strip()!r}")
-                break
+    problems.extend(_pronoun_problems(prose, sex))
 
     return problems
+
+
+MALE_TERMS = re.compile(r"\b(he|him|his|man|male|gentleman)\b", re.I)
+FEMALE_TERMS = re.compile(r"\b(she|her|hers|woman|female|lady)\b", re.I)
+
+
+def _pronoun_problems(prose: str, sex: str | None) -> list[str]:
+    """Whether the vignette is about the patient the record describes.
+
+    Counted rather than searched for. A vignette may legitimately mention a
+    relative of the other sex -- "her husband called the ambulance" -- so the
+    test is which set of terms predominates, not whether the other set occurs
+    at all.
+
+    Word boundaries are not optional here. Substring matching sees "he" inside
+    "the", "man" inside "woman" and "male" inside "female", which rejects almost
+    any prose written about a female patient.
+    """
+    if not sex:
+        return []
+
+    male = len(MALE_TERMS.findall(prose))
+    female = len(FEMALE_TERMS.findall(prose))
+
+    if sex.lower() == "male" and female > male:
+        return [f"narrative reads as female ({female} terms to {male}) but the record says male"]
+    if sex.lower() == "female" and male > female:
+        return [f"narrative reads as male ({male} terms to {female}) but the record says female"]
+    return []
 
 
 def _age_problems(prose: str, age: float | None) -> list[str]:
@@ -230,11 +322,13 @@ def inject_computed_vitals(narrative: dict[str, Any], *, heart_rate: float | Non
 
 __all__ = [
     "ALLOWED_VITALS",
+    "DIAGNOSIS_ALIASES",
     "MAX_FIELD_CHARS",
     "MAX_TOTAL_CHARS",
     "REQUIRED_FIELDS",
     "SYSTEM_PROMPT",
     "build_user_prompt",
+    "diagnosis_leaks",
     "inject_computed_vitals",
     "validate",
 ]

@@ -145,3 +145,161 @@ def test_a_missing_clinician_note_simply_omits_the_section():
         age=56, sex="male", age_censored=False, diagnostic_labels=["sinus rhythm"], clinical_report=None
     )
     assert "Contemporaneous clinician note" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# diagnosis leakage
+# ---------------------------------------------------------------------------
+def test_naming_the_diagnosis_is_refused():
+    """The vignette is read before the tracing.
+
+    A history saying "previous silent inferior myocardial infarction" answers
+    the case before the student has looked at anything, which is what section
+    5.4 of the brief forbids.
+    """
+    leaked = _good(
+        history="Previous silent inferior myocardial infarction diagnosed on screening."
+    )
+    problems = narrative.validate(
+        leaked, age=56, sex="male", diagnostic_labels=["inferior myocardial infarction"]
+    )
+    assert any("gives the diagnosis away" in p for p in problems), problems
+
+
+def test_an_abbreviation_of_the_diagnosis_is_refused():
+    """A model told not to write "atrial fibrillation" will happily write "AF"."""
+    leaked = _good(presenting_complaint="Known AF, now with palpitations.")
+    problems = narrative.validate(
+        leaked, age=70, sex="male", diagnostic_labels=["atrial fibrillation"]
+    )
+    assert any("gives the diagnosis away" in p for p in problems), problems
+
+
+def test_a_consistent_presentation_that_names_nothing_passes():
+    """Family history of sudden death is a legitimate clue for long QT. It is
+    consistent with the diagnosis without naming it, which is exactly right."""
+    subtle = _good(
+        presenting_complaint="Intermittent palpitations and lightheadedness for three weeks.",
+        history="Hypertension on amlodipine. Hypothyroidism on levothyroxine. Mother died suddenly at 52.",
+    )
+    assert narrative.validate(
+        subtle, age=48, sex="female", diagnostic_labels=["long QT-interval", "sinus rhythm"]
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "Symptoms began 20 minutes after lunch.",
+        "Seen in the minor injuries unit after a fall.",
+        "Afterwards the discomfort settled without treatment.",
+    ],
+)
+def test_the_leak_check_respects_word_boundaries(prose):
+    """'mi' must not fire inside 'minutes', nor 'af' inside 'after'.
+
+    Without word boundaries this check rejects ordinary prose, which costs a
+    repair call on almost every case.
+    """
+    assert narrative.diagnosis_leaks(prose, ["inferior myocardial infarction"]) == []
+
+
+def test_leakage_is_only_checked_against_this_case_s_diagnosis():
+    """Mentioning a condition the case does not have is not a leak."""
+    assert narrative.diagnosis_leaks(
+        "Long-standing hypertrophy of the left ventricle on a previous scan.",
+        ["atrial fibrillation"],
+    ) == []
+
+
+# ---------------------------------------------------------------------------
+# the substring bug
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "The patient attended today and this began yesterday.",
+        "She is a woman of 48 with no cardiac history.",
+        "Her observations were stable throughout.",
+    ],
+)
+def test_ordinary_prose_about_a_female_patient_is_not_flagged(prose):
+    """Substring matching saw "he" inside "the", "man" inside "woman" and
+    "male" inside "female", which rejected almost every vignette written about a
+    female patient. Word boundaries are not optional here."""
+    assert narrative._pronoun_problems(prose, "female") == []
+
+
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "The patient attended with further discomfort; his mother drove him.",
+        "He is a man of 60 with a smoking history.",
+    ],
+)
+def test_ordinary_prose_about_a_male_patient_is_not_flagged(prose):
+    assert narrative._pronoun_problems(prose, "male") == []
+
+
+def test_a_vignette_written_about_the_wrong_sex_is_still_caught():
+    assert narrative._pronoun_problems("He attended with his wife.", "female")
+    assert narrative._pronoun_problems("She attended with her husband.", "male")
+
+
+def test_a_relative_of_the_other_sex_does_not_trip_the_check():
+    """Counted rather than searched for, so a mentioned relative is fine as long
+    as the vignette is predominantly about the right patient."""
+    prose = "She attended with her husband, who said he had noticed her looking pale."
+    assert narrative._pronoun_problems(prose, "female") == []
+
+
+# ---------------------------------------------------------------------------
+# the prompt
+# ---------------------------------------------------------------------------
+def test_the_prompt_gives_no_example_observations_to_copy():
+    """Three vignettes in a row came back with identical vitals -- 138/86, 36.8,
+    98% -- because the example value in the prompt became the answer every
+    time."""
+    assert "138/86" not in narrative.SYSTEM_PROMPT
+    assert "identical values across different patients" in narrative.SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# reply parsing
+# ---------------------------------------------------------------------------
+def _extract():
+    import sys
+    sys.path.insert(0, str(REPO_ROOT_SCRIPTS))
+    from generate_narratives import _extract_json
+    return _extract_json
+
+
+REPO_ROOT_SCRIPTS = __import__("pathlib").Path(__file__).resolve().parents[1] / "scripts"
+
+
+def test_plain_json_parses():
+    assert _extract()('{"a": 1}') == {"a": 1}
+
+
+def test_a_fenced_block_parses():
+    assert _extract()('```json\n{"a": 1}\n```') == {"a": 1}
+
+
+def test_a_preamble_before_the_object_parses():
+    """A weaker model sometimes writes a sentence first. The object is there, so
+    discarding the whole reply would waste a call for nothing."""
+    assert _extract()('Here is the vignette:\n{"a": 1}\nHope that helps.') == {"a": 1}
+
+
+def test_an_empty_reply_is_transient_not_fatal():
+    from generate_narratives import TransientError
+
+    with pytest.raises(TransientError):
+        _extract()("   ")
+
+
+def test_a_reply_with_no_object_is_transient():
+    from generate_narratives import TransientError
+
+    with pytest.raises(TransientError):
+        _extract()("I cannot help with that request.")

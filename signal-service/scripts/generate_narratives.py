@@ -41,6 +41,7 @@ import os
 import re
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -67,6 +68,11 @@ MAX_TOKENS = 1200
 TEMPERATURE = 0.6
 
 CONNECT_TIMEOUT_SECONDS = 10
+
+# A shared router rate-limits, so transport failures are retried with
+# backoff. Separate from the validation rounds on purpose.
+MAX_TRANSPORT_ATTEMPTS = 4
+BACKOFF_BASE_SECONDS = 5
 
 _print_lock = threading.Lock()
 
@@ -138,13 +144,36 @@ def load_cases(cur, *, limit: int | None, force: bool) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # the call
 # ---------------------------------------------------------------------------
+class TransientError(RuntimeError):
+    """A failure worth retrying: rate limit, server error, timeout."""
+
+
 def _extract_json(text: str) -> dict[str, Any]:
-    """Parse the model's reply, tolerating a fenced code block around it."""
+    """Parse the model's reply.
+
+    Tolerates a fenced code block and a sentence of preamble, because a weaker
+    model will sometimes write "Here is the vignette:" before the JSON. Falls
+    back to the outermost balanced brace pair rather than giving up, since a
+    reply that contains the object is not a reply worth discarding.
+    """
     stripped = text.strip()
-    fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", stripped, re.S)
+    if not stripped:
+        raise TransientError("empty reply")
+
+    fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", stripped, re.S)
     if fenced:
         stripped = fenced.group(1)
-    return json.loads(stripped)
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start == -1 or end <= start:
+        raise TransientError(f"no JSON object in reply: {stripped[:120]!r}")
+    return json.loads(stripped[start : end + 1])
 
 
 def call_model(
@@ -194,7 +223,13 @@ def call_model(
         },
         timeout=120,
     )
+    if response.status_code == 429 or response.status_code >= 500:
+        # A shared router rate-limits. Worth waiting for, not worth discarding a
+        # case over.
+        raise TransientError(f"API returned {response.status_code}: {response.text[:200]}")
     if response.status_code != 200:
+        # 401, 403, 400: waiting will not help, and retrying 714 times would
+        # only make the same mistake louder.
         raise RuntimeError(f"API returned {response.status_code}: {response.text[:300]}")
 
     body = response.json()
@@ -224,21 +259,41 @@ def generate_one(
     )
 
     repair_note = None
-    for attempt in (1, 2):
-        try:
-            drafted = call_model(api_key, model, prompt, repair_note, base_url)
-        # Deliberately broad: a network blip or a malformed reply on one case
-        # must not abandon the other 713.
-        except Exception as exc:
-            log(f"  case {case['case_id']}: call failed on attempt {attempt}: {exc}")
+    for validation_round in (1, 2):
+        drafted = None
+        # Transport failures get their own retries with backoff, separately from
+        # the validation rounds: a rate limit is not the model's mistake and
+        # should not consume the one chance it has to fix its output.
+        for transport_attempt in range(1, MAX_TRANSPORT_ATTEMPTS + 1):
+            try:
+                drafted = call_model(api_key, model, prompt, repair_note, base_url)
+                break
+            except TransientError as exc:
+                if transport_attempt == MAX_TRANSPORT_ATTEMPTS:
+                    log(f"  case {case['case_id']}: giving up after {transport_attempt} attempts: {exc}")
+                    return None
+                delay = BACKOFF_BASE_SECONDS * (2 ** (transport_attempt - 1))
+                time.sleep(delay)
+            except Exception as exc:
+                # Deliberately broad, but not retried: a 403 or a bad request
+                # will fail identically every time.
+                log(f"  case {case['case_id']}: call failed: {exc}")
+                return None
+
+        if drafted is None:
             return None
 
-        problems = narrative_rules.validate(drafted, age=case["age"], sex=case["sex"])
+        problems = narrative_rules.validate(
+            drafted,
+            age=case["age"],
+            sex=case["sex"],
+            diagnostic_labels=case["diagnostic_labels"],
+        )
         if not problems:
             return narrative_rules.inject_computed_vitals(drafted, heart_rate=case["heart_rate"])
 
         repair_note = "\n".join(f"- {problem}" for problem in problems)
-        if attempt == 2:
+        if validation_round == 2:
             log(f"  case {case['case_id']}: rejected after repair:\n    " + "\n    ".join(problems))
 
     return None
