@@ -70,17 +70,19 @@ public class SessionService {
      */
     @Transactional
     public SessionView start(long studentId, long caseId, Mode mode) {
-        boolean open = db.sql("""
-                SELECT count(*) > 0 FROM sessions
-                WHERE student_id = :studentId AND case_id = :caseId AND state <> 'CASE_COMPLETE'
-                """)
-                .param("studentId", studentId)
-                .param("caseId", caseId)
-                .query(Boolean.class)
-                .single();
-        if (open) {
-            throw new ConflictException(
-                    "This case is already open. Finish or abandon it before starting it again.");
+        // A case already open is resumed, not refused. A student who left a
+        // case half-read and came back was previously told to "finish or
+        // abandon it", and nothing could abandon it -- the case was closed to
+        // them permanently. Returning the session they already have is both
+        // the useful answer and the one that cannot strand anybody.
+        //
+        // Their earlier answers stay on it. Handing back a clean session would
+        // let a wrong step be re-answered for full marks, which is not what a
+        // record of what a student knew should say.
+        Optional<Long> alreadyOpen = openSessionFor(studentId, caseId);
+        if (alreadyOpen.isPresent()) {
+            log.info("student {} resumed session {} on case {}", studentId, alreadyOpen.get(), caseId);
+            return view(alreadyOpen.get());
         }
 
         String status = db.sql("SELECT review_status FROM cases WHERE id = :caseId")
@@ -106,6 +108,14 @@ public class SessionService {
                     .param("persona", PERSONA_VERSION)
                     .query(Long.class)
                     .single();
+        } catch (org.springframework.dao.DuplicateKeyException race) {
+            // Two requests arrived together, both found no open session, and
+            // both tried to insert one. The interface does exactly this: its
+            // start effect runs twice. The unique index settles it, and the
+            // loser answers with the session that won rather than an error.
+            return openSessionFor(studentId, caseId)
+                    .map(this::view)
+                    .orElseThrow(() -> new ConflictException("Could not start this case. Try again."));
         } catch (org.springframework.dao.DataAccessException exception) {
             // The database trigger is the backstop, and it raises a plain
             // exception that Spring cannot categorise. Reaching here means the
@@ -116,6 +126,27 @@ public class SessionService {
 
         log.info("student {} started session {} on case {} in {}", studentId, sessionId, caseId, mode);
         return view(sessionId);
+    }
+
+    /**
+     * This student's unfinished session on this case, if they have one.
+     *
+     * <p>ABANDONED counts as closed. It did not in the rule this replaces, so
+     * an abandoned session blocked its case exactly as an open one did.
+     */
+    private Optional<Long> openSessionFor(long studentId, long caseId) {
+        return db.sql("""
+                SELECT id FROM sessions
+                WHERE student_id = :studentId
+                  AND case_id = :caseId
+                  AND state NOT IN ('CASE_COMPLETE', 'ABANDONED')
+                ORDER BY started_at DESC, id DESC
+                LIMIT 1
+                """)
+                .param("studentId", studentId)
+                .param("caseId", caseId)
+                .query(Long.class)
+                .optional();
     }
 
     // -----------------------------------------------------------------------

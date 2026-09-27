@@ -12,6 +12,7 @@ import com.cardiosaarthi.review.study.FeedbackType;
 import com.cardiosaarthi.review.study.GradeOutcome;
 import com.cardiosaarthi.review.study.Mode;
 import com.cardiosaarthi.review.study.SessionService;
+import com.cardiosaarthi.review.study.SessionService.SessionView;
 import com.cardiosaarthi.review.study.StudentAnswer;
 
 import org.junit.jupiter.api.DisplayName;
@@ -159,14 +160,51 @@ class SessionOrchestrationTests {
         }
 
         @Test
-        @DisplayName("the same case cannot be opened twice at once")
-        void noDuplicateOpenSession() {
+        @DisplayName("opening a case again resumes the session rather than starting a second")
+        void openingAgainResumes() {
             long studentId = student("duplicate@example.invalid");
             long caseId = approvedCase(-3003);
-            sessions.start(studentId, caseId, Mode.BEGINNER_TUTOR);
+            SessionView first = sessions.start(studentId, caseId, Mode.BEGINNER_TUTOR);
 
-            assertThatThrownBy(() -> sessions.start(studentId, caseId, Mode.BEGINNER_TUTOR))
-                    .isInstanceOf(ConflictException.class);
+            SessionView again = sessions.start(studentId, caseId, Mode.BEGINNER_TUTOR);
+
+            // The same session, not a second one. This used to be refused with
+            // "finish or abandon it", and nothing could abandon it, so the case
+            // was shut to that student for good.
+            assertThat(again.sessionId()).isEqualTo(first.sessionId());
+            assertThat(openSessionCount(studentId, caseId)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("an abandoned session does not block the case")
+        void abandonedDoesNotBlock() {
+            long studentId = student("abandoner@example.invalid");
+            long caseId = approvedCase(-3004);
+            SessionView first = sessions.start(studentId, caseId, Mode.BEGINNER_TUTOR);
+
+            db.sql("UPDATE sessions SET state = 'ABANDONED' WHERE id = :id")
+                    .param("id", first.sessionId())
+                    .update();
+
+            SessionView fresh = sessions.start(studentId, caseId, Mode.BEGINNER_TUTOR);
+
+            // A new session, because the old one is closed. The rule this
+            // replaces counted ABANDONED as open, so abandoning a session left
+            // the case just as unreachable.
+            assertThat(fresh.sessionId()).isNotEqualTo(first.sessionId());
+            assertThat(openSessionCount(studentId, caseId)).isEqualTo(1);
+        }
+
+        private int openSessionCount(long studentId, long caseId) {
+            return db.sql("""
+                    SELECT count(*) FROM sessions
+                    WHERE student_id = :studentId AND case_id = :caseId
+                      AND state NOT IN ('CASE_COMPLETE', 'ABANDONED')
+                    """)
+                    .param("studentId", studentId)
+                    .param("caseId", caseId)
+                    .query(Integer.class)
+                    .single();
         }
     }
 
