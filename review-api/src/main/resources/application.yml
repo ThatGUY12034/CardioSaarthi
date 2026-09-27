@@ -45,6 +45,10 @@ cardiosaarthi:
   # checked to stay inside it.
   repo-root: ${CARDIO_REPO_ROOT:..}
   cors-allowed-origins: ${CARDIO_CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+  # HMAC key for the console's bearer tokens. No default: a signing key with a
+  # fallback value is a signing key that ships to production unchanged.
+  jwt-secret: ${CARDIO_JWT_SECRET:}
+
   bootstrap:
     # Set these in .env to create or update one administrator account at start
     # up. Left empty, no account is created and nothing can log in -- which is

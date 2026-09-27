@@ -2,6 +2,7 @@ package com.cardiosaarthi.review.reviewer;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -56,6 +57,20 @@ public class ReviewerService implements UserDetailsService {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new IllegalStateException("no authenticated reviewer on this request");
         }
+
+        // Two mechanisms reach here. HTTP Basic authenticates by email, so the
+        // principal's name is one. A bearer token's name is its subject
+        // ("FACULTY:7"), which is not an email and would never be found, so the
+        // row is looked up by the id the token carries instead.
+        if (authentication instanceof JwtAuthenticationToken token) {
+            Long id = token.getToken().getClaim("uid");
+            if (id == null) {
+                throw new IllegalStateException("token carries no uid claim");
+            }
+            return reviewers.findById(id).orElseThrow(() -> new IllegalStateException(
+                    "token names reviewer " + id + " but no such row exists"));
+        }
+
         return reviewers.findByEmail(authentication.getName())
                 .orElseThrow(() -> new IllegalStateException(
                         "authenticated as " + authentication.getName() + " but no reviewer row exists"));

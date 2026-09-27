@@ -11,12 +11,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param repoRoot           directory that image paths stored in the database are resolved against
  * @param corsAllowedOrigins origins the review console is served from
  * @param bootstrap          optional single administrator created at start up
+ * @param jwtSecret          HMAC key the console's bearer tokens are signed with
  */
 @ConfigurationProperties(prefix = "cardiosaarthi")
 public record ApiProperties(
         String repoRoot,
         List<String> corsAllowedOrigins,
-        Bootstrap bootstrap) {
+        Bootstrap bootstrap,
+        String jwtSecret) {
 
     /**
      * An account created or updated when the service starts.

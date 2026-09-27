@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -114,6 +115,23 @@ public class ApiExceptionHandler {
                 HttpStatus.BAD_REQUEST,
                 "the request body could not be read; check that every field has the right type "
                         + "and that action and rejectionReason use the names from /api/review/options"));
+    }
+
+    /**
+     * An exception that already carries the status it means.
+     *
+     * <p>Without this the catch-all below turns every one of them into a 500. A
+     * wrong password would answer 500 rather than 401, and the console's
+     * interceptor clears its stored token on 401 specifically -- so the login
+     * screen would sit there reporting a server fault instead of asking the
+     * person to check their details.
+     */
+    @ExceptionHandler(ErrorResponseException.class)
+    ResponseEntity<ApiError> errorResponse(ErrorResponseException exception) {
+        HttpStatus status = HttpStatus.valueOf(exception.getStatusCode().value());
+        String message = exception.getBody().getDetail();
+        return ResponseEntity.status(status)
+                .body(ApiError.of(status, message != null ? message : status.getReasonPhrase()));
     }
 
     /**
