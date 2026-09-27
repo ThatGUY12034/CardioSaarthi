@@ -1,0 +1,40 @@
+# CardioSaarthi — local development stack.
+#
+# Only the database is here for now. The Spring Boot review API and the React
+# review console join this file as they are built, on the same network.
+#
+# Start with:  docker compose up -d
+# Credentials come from .env (copy .env.example). They are development-only and
+# the port is bound to 127.0.0.1 so nothing is reachable off this machine.
+
+services:
+  postgres:
+    # pgvector's image rather than plain postgres: the knowledge base in week 7
+    # needs the extension, and enabling it later would mean a privileged
+    # migration on a database that by then holds faculty corrections.
+    image: pgvector/pgvector:pg16
+    container_name: cardiosaarthi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cardiosaarthi}
+      POSTGRES_USER: ${POSTGRES_USER:-cardiosaarthi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Deterministic collation, so ORDER BY does not depend on the host locale.
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Applied in filename order, once, on an empty data directory. Deleting
+      # the volume is therefore how you rebuild the schema during development.
+      - ./platform/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Other services wait on this rather than sleeping and hoping.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cardiosaarthi} -d ${POSTGRES_DB:-cardiosaarthi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  postgres_data:

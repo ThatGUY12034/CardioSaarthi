@@ -30,6 +30,11 @@ dev = [
     "ruff>=0.4",
     "pillow>=10.0",
 ]
+# Needed only by scripts/ingest_cases.py. Kept out of the base dependencies so
+# the measurement engine stays runnable with no database anywhere near it.
+db = [
+    "psycopg[binary]>=3.1",
+]
 
 [project.scripts]
 cardiosignal = "cardiosignal.cli:app"
