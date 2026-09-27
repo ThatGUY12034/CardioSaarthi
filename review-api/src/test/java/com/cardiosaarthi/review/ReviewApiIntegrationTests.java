@@ -541,6 +541,74 @@ class ReviewApiIntegrationTests {
         assertThat(duration).isEqualTo(95);
     }
 
+    @Test
+    @WithMockUser(username = REVIEWER_EMAIL)
+    @DisplayName("a seeded approval makes a case servable but is never counted as review evidence")
+    void seededApprovalsAreExcludedFromEveryStatistic() throws Exception {
+        // Development needs servable cases long before faculty review anything.
+        // The danger is not the seeded approval; it is a report six months later
+        // claiming a faculty approval rate that includes approvals no clinician
+        // made. The exclusion is in SQL so that it cannot be forgotten.
+        long systemReviewer = db.sql("""
+                INSERT INTO reviewers (email, full_name, role, password_hash)
+                VALUES ('seed.test@example.invalid', 'Seed', 'system', NULL)
+                ON CONFLICT (lower(email)) DO UPDATE SET role = 'system'
+                RETURNING id
+                """).query(Long.class).single();
+
+        int reviewsBefore = db.sql("SELECT n_reviews FROM v_review_outcomes").query(Integer.class).single();
+
+        long caseId = pendingCase(-1070, 160.0);
+        db.sql("""
+                INSERT INTO reviews (case_id, reviewer_id, action, note)
+                VALUES (:caseId, :reviewer, 'approve', 'development fixture')
+                """)
+                .param("caseId", caseId).param("reviewer", systemReviewer).update();
+        db.sql("""
+                UPDATE cases SET review_status = 'approved', reviewed_at = now(), reviewed_by = :reviewer
+                WHERE id = :caseId
+                """)
+                .param("caseId", caseId).param("reviewer", systemReviewer).update();
+        db.sql("""
+                INSERT INTO measurement_corrections
+                    (case_id, name, computed_value, corrected_value, unit, engine_version, reviewer_id)
+                VALUES (:caseId, 'pr_interval', 160.0, 999.0, 'ms', '0.2.0', :reviewer)
+                """)
+                .param("caseId", caseId).param("reviewer", systemReviewer).update();
+
+        assertThat(servedCount(caseId))
+                .as("the case must be servable, which is the whole point of seeding it")
+                .isEqualTo(2);
+
+        assertThat(db.sql("SELECT n_reviews FROM v_review_outcomes").query(Integer.class).single())
+                .as("a system approval must not appear in pipeline accuracy")
+                .isEqualTo(reviewsBefore);
+
+        assertThat(db.sql("""
+                SELECT count(*) FROM v_measurement_agreement
+                WHERE worst >= 800
+                """).query(Integer.class).single())
+                .as("a system correction must not reach the engine's report card")
+                .isZero();
+    }
+
+    @Test
+    @WithMockUser(username = REVIEWER_EMAIL)
+    @DisplayName("a system account cannot authenticate")
+    void systemAccountHasNoPassword() {
+        db.sql("""
+                INSERT INTO reviewers (email, full_name, role, password_hash)
+                VALUES ('seed.noauth@example.invalid', 'Seed', 'system', NULL)
+                ON CONFLICT (lower(email)) DO NOTHING
+                """).update();
+
+        // A null hash is what makes the account unusable as a login. It exists
+        // to own rows, not to be signed in as.
+        String hash = db.sql("SELECT password_hash FROM reviewers WHERE email = 'seed.noauth@example.invalid'")
+                .query(String.class).optional().orElse(null);
+        assertThat(hash).isNull();
+    }
+
     // -----------------------------------------------------------------------
     // helpers
     // -----------------------------------------------------------------------
