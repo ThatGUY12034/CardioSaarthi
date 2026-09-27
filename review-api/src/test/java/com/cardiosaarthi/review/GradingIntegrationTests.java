@@ -373,6 +373,34 @@ class GradingIntegrationTests {
         }
 
         @Test
+        @DisplayName("the rhythm step is not marked when the label and the classifier disagree")
+        void rhythmConflictIsNotGradable() {
+            // Atrial fibrillation is irregularly irregular by definition. On 10 of
+            // the 50 fibrillation cases in the bank the classifier said regularly
+            // irregular instead, so a student giving the textbook answer would be
+            // marked wrong. Neither side is assumed right: the step is not marked.
+            long caseId = approvedCase(-2040, "REGULARLY_IRREGULAR", "NORMAL");
+            db.sql("UPDATE cases SET scp_codes = '{\"AFIB\": 100.0}'::jsonb WHERE id = :id")
+                    .param("id", caseId).update();
+
+            GradeResult result = grading.grade(caseId, 2, category("IRREGULARLY_IRREGULAR"));
+            assertThat(result.outcome()).isEqualTo(GradeOutcome.NOT_GRADABLE);
+            assertThat(result.detail()).contains("disagree");
+        }
+
+        @Test
+        @DisplayName("a fibrillating case the classifier agrees with is still marked normally")
+        void rhythmAgreementIsStillGraded() {
+            long caseId = approvedCase(-2041, "IRREGULARLY_IRREGULAR", "NORMAL");
+            db.sql("UPDATE cases SET scp_codes = '{\"AFIB\": 100.0}'::jsonb WHERE id = :id")
+                    .param("id", caseId).update();
+
+            assertThat(grading.grade(caseId, 2, category("IRREGULARLY_IRREGULAR")).correct()).isTrue();
+            assertThat(grading.grade(caseId, 2, category("REGULAR")).errorLabel())
+                    .isEqualTo("IRREGULAR_CALLED_REGULAR");
+        }
+
+        @Test
         @DisplayName("an unapproved case has no served measurements and cannot be graded")
         void unapprovedCaseIsNotGradable() {
             long caseId = db.sql("""

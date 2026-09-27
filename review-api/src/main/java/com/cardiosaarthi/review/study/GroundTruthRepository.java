@@ -36,7 +36,7 @@ public class GroundTruthRepository {
     public GroundTruth forStep(long caseId, InterpretationStep step) {
         return switch (step.concept()) {
             case "rate", "pr_interval", "qrs", "qt_interval" -> numeric(caseId, step);
-            case "rhythm" -> categorical(caseId, step, "rhythm_regularity");
+            case "rhythm" -> rhythm(caseId, step);
             case "axis" -> categorical(caseId, step, "axis_category");
             case "p_waves" -> pWaves(caseId, step);
             case "st_segment" -> stSegment(caseId, step);
@@ -77,6 +77,46 @@ public class GroundTruthRepository {
         return GroundTruth.numeric(
                 step.step(), step.concept(), found.value(), found.unit(),
                 step.toleranceAbs(), step.tolerancePct(), notMeasurable);
+    }
+
+    /**
+     * The rhythm, unless the engine and the cardiologist disagree about it.
+     *
+     * <p>Atrial fibrillation and flutter are irregularly irregular by definition.
+     * On 10 of the 50 fibrillation cases in the bank the rhythm classifier
+     * instead called the rhythm regularly irregular, usually because ectopic
+     * beats gave the R-R series a periodic-looking autocorrelation. A student
+     * answering "irregularly irregular" on one of those -- the textbook answer,
+     * and the right one -- would be marked wrong by the platform.
+     *
+     * <p>That is risk 1 in the brief exactly: a measurement the platform is
+     * confident about and wrong about, marking a correct student answer
+     * incorrect. Neither side is assumed right here. The step is simply not
+     * marked, the same resolution the engine uses when an inherited diagnosis
+     * contradicts a computed P-wave measurement.
+     */
+    private GroundTruth rhythm(long caseId, InterpretationStep step) {
+        GroundTruth computed = categorical(caseId, step, "rhythm_regularity");
+        if (!computed.available()) {
+            return computed;
+        }
+
+        boolean fibrillatingByLabel = Boolean.TRUE.equals(db.sql("""
+                SELECT scp_codes ?? 'AFIB' OR scp_codes ?? 'AFLT'
+                FROM cases WHERE id = :caseId
+                """)
+                .param("caseId", caseId)
+                .query(Boolean.class)
+                .optional()
+                .orElse(false));
+
+        if (fibrillatingByLabel && !"IRREGULARLY_IRREGULAR".equals(computed.category())) {
+            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
+                    "The cardiologist's annotation and the rhythm classifier disagree about this "
+                            + "recording, so the step is not marked. A student is not marked wrong "
+                            + "for a disagreement between the platform and the label.");
+        }
+        return computed;
     }
 
     private GroundTruth categorical(long caseId, InterpretationStep step, String column) {
