@@ -45,14 +45,24 @@ public record ReviewRequest(
      * @param value the reviewer's number, in the measure's own unit
      */
     public record Correction(
-            @NotBlank(message = "each correction needs a measure name")
+            @NotBlank(message = "each correction needs a parameter name")
             String name,
 
-            @NotNull(message = "each correction needs a value")
             Double value,
+
+            /*
+             * For the four parameters that are not numbers -- the rhythm, the
+             * axis, P-wave presence and which leads deviate -- and for marking a
+             * numeric measure NOT_MEASURABLE.
+             */
+            String text,
 
             @Size(max = 500, message = "correction note must be 500 characters or fewer")
             String note) {
+
+        public boolean isTextual() {
+            return text != null && !text.isBlank();
+        }
     }
 
     public List<Correction> correctionsOrEmpty() {

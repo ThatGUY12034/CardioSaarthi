@@ -64,10 +64,28 @@ public class ReviewService {
         List<String> unchanged = new ArrayList<>();
 
         for (ReviewRequest.Correction correction : corrections) {
+            if (!Parameters.isKnown(correction.name())) {
+                throw new InvalidReviewException(
+                        "'%s' is not a correctable parameter".formatted(correction.name()));
+            }
+
+            if (correction.isTextual() || Parameters.isCategorical(correction.name())) {
+                if (recordTextual(caseId, correction, reviewer.id())) {
+                    recorded.add(correction.name());
+                } else {
+                    unchanged.add(correction.name());
+                }
+                continue;
+            }
+
             ComputedMeasure computed = loadMeasure(caseId, correction.name())
                     .orElseThrow(() -> new InvalidReviewException(
                             "case %d has no measure called '%s'".formatted(caseId, correction.name())));
 
+            if (correction.value() == null) {
+                throw new InvalidReviewException(
+                        "'%s' is a measurement and needs a number".formatted(correction.name()));
+            }
             checkPlausible(correction);
 
             if (computed.value() != null && computed.value().equals(correction.value())) {
@@ -186,6 +204,89 @@ public class ReviewService {
     // -----------------------------------------------------------------------
     // writes
     // -----------------------------------------------------------------------
+    /**
+     * Records a correction to a parameter that is not a number.
+     *
+     * <p>The rhythm, the axis, P-wave presence, which leads deviate -- and a
+     * numeric measure a reviewer marks NOT_MEASURABLE. As with a numeric
+     * correction the computed value is snapshotted beside the corrected one and
+     * nothing is overwritten.
+     *
+     * @return false when the reviewer's value matches what the engine already
+     *         says, which is not a correction and is not worth a row
+     */
+    private boolean recordTextual(long caseId, ReviewRequest.Correction correction, long reviewerId) {
+        String corrected;
+        try {
+            corrected = Parameters.normalise(correction.name(), correction.text());
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidReviewException(exception.getMessage());
+        }
+
+        String computed = currentTextValue(caseId, correction.name());
+        if (corrected.equals(computed)) {
+            return false;
+        }
+
+        db.sql("""
+                INSERT INTO measurement_corrections
+                    (case_id, name, computed_text, corrected_text, engine_version, reviewer_id, note)
+                VALUES (:caseId, :name, :computed, :corrected,
+                        (SELECT engine_version FROM cases WHERE id = :caseId), :reviewerId, :note)
+                """)
+                .param("caseId", caseId)
+                .param("name", correction.name())
+                .param("computed", computed)
+                .param("corrected", corrected)
+                .param("reviewerId", reviewerId)
+                .param("note", correction.note())
+                .update();
+        return true;
+    }
+
+    /**
+     * What the platform currently says this parameter is.
+     *
+     * <p>Read from v_served_parameters, so a reviewer correcting the same
+     * parameter twice is compared against their own previous correction rather
+     * than against the engine's original.
+     */
+    private String currentTextValue(long caseId, String name) {
+        // Read from the underlying values rather than from v_served_parameters:
+        // that view covers approved cases only, and a reviewer corrects a case
+        // while it is still pending. Reading the view here left computed_text
+        // empty on every correction, which is exactly the snapshot the
+        // measurement-agreement evidence depends on.
+        return db.sql("""
+                SELECT coalesce(
+                    (SELECT mc.corrected_text FROM measurement_corrections mc
+                      WHERE mc.case_id = c.id AND mc.name = :name
+                      ORDER BY mc.created_at DESC, mc.id DESC LIMIT 1),
+                    CASE :name
+                        WHEN 'rhythm' THEN c.rhythm_regularity
+                        WHEN 'axis'   THEN c.axis_category
+                        WHEN 'p_waves' THEN (
+                            SELECT CASE WHEN m.status = 'NOT_MEASURABLE' THEN 'ABSENT' ELSE 'PRESENT' END
+                            FROM case_measurements m
+                            WHERE m.case_id = c.id AND m.name = 'p_duration')
+                        WHEN 'st_segment' THEN (
+                            SELECT coalesce(string_agg(d.lead, ',' ORDER BY d.lead), '')
+                            FROM case_st_deviations d
+                            WHERE d.case_id = c.id AND d.finding <> 'NORMAL')
+                        ELSE (
+                            SELECT m.status FROM case_measurements m
+                            WHERE m.case_id = c.id AND m.name = :name)
+                    END,
+                    '')
+                FROM cases c WHERE c.id = :caseId
+                """)
+                .param("caseId", caseId)
+                .param("name", name)
+                .query(String.class)
+                .optional()
+                .orElse("");
+    }
+
     private void insertCorrection(long caseId, ReviewRequest.Correction correction,
                                   ComputedMeasure computed, String engineVersion, long reviewerId) {
         db.sql("""

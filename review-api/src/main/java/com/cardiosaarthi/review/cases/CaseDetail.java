@@ -46,7 +46,13 @@ public record CaseDetail(
         OffsetDateTime reviewedAt,
         Long reviewedBy,
         List<MeasurementView> measurements,
-        List<StDeviationView> stDeviations) {
+        List<StDeviationView> stDeviations,
+        /*
+         * The nine interpretation parameters, in one shape. This is what a
+         * reviewer actually verifies: exactly the nine things a student will
+         * be examined on, rather than the seven that happen to be numbers.
+         */
+        List<ParameterView> parameters) {
 
     public boolean isPending() {
         return "pending".equals(reviewStatus);

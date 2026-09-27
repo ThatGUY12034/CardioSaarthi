@@ -1,7 +1,5 @@
 package com.cardiosaarthi.review.study;
 
-import java.util.HashSet;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -11,14 +9,17 @@ import org.springframework.stereotype.Repository;
 /**
  * What the platform knows the answer to be, read from the database.
  *
- * <p>Numeric steps are read from {@code v_served_measurements}, which is the
- * reviewer's correction where one exists and the engine's value otherwise, and
- * which contains nothing at all for an unapproved case. A student therefore
- * cannot be graded against a number no reviewer has stood behind.
+ * <p>Everything comes from {@code v_served_parameters}, which holds all nine
+ * interpretation parameters in one shape, each as the reviewer corrected it or
+ * as the engine computed it, and which contains nothing at all for an unapproved
+ * case. A student therefore cannot be graded against a value no reviewer has
+ * stood behind, and a reviewer who corrects a rhythm has thereby changed what a
+ * right answer is.
  *
- * <p>Nothing here consults a diagnosis. The cardiologist's label says what the
- * ECG shows; it does not say what a student should have measured, and using it
- * as an answer key would let an inherited diagnosis stand in for a measurement.
+ * <p>Nothing here consults a diagnosis as an answer key. The cardiologist's
+ * label says what the ECG shows; it does not say what a student should have
+ * measured. It is used in exactly one way: to notice when it contradicts the
+ * engine, and decline to mark the step rather than pick a side.
  */
 @Repository
 public class GroundTruthRepository {
@@ -29,79 +30,117 @@ public class GroundTruthRepository {
         this.db = db;
     }
 
-    /** One served measurement: the value a student is graded against, and its status. */
-    private record Served(Double value, String unit, String status) {
+    /** One served parameter, whichever kind it is. */
+    private record Served(String kind, Double value, String text, String unit, String status) {
     }
 
     public GroundTruth forStep(long caseId, InterpretationStep step) {
-        return switch (step.concept()) {
-            case "rate", "pr_interval", "qrs", "qt_interval" -> numeric(caseId, step);
-            case "rhythm" -> rhythm(caseId, step);
-            case "axis" -> categorical(caseId, step, "axis_category");
-            case "p_waves" -> pWaves(caseId, step);
-            case "st_segment" -> stSegment(caseId, step);
-            // The engine locates the T wave to measure QT but never measures its
-            // polarity, so there is no computed answer to compare against. Said
-            // plainly rather than guessed at from the diagnosis label.
-            case "t_waves" -> GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
+        // The engine locates the T wave in order to measure QT but never
+        // measures its polarity, so there is no computed answer to compare
+        // against. Said plainly rather than guessed at from the diagnosis label.
+        if ("t_waves".equals(step.concept())) {
+            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
                     "The measurement engine does not yet compute T-wave polarity, so this step "
                             + "cannot be marked. It is skipped rather than guessed.");
-            default -> GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
-                    "No ground truth is defined for '" + step.concept() + "'.");
-        };
-    }
+        }
 
-    private GroundTruth numeric(long caseId, InterpretationStep step) {
-        Optional<Served> served = db.sql("""
-                SELECT value, unit, status FROM v_served_measurements
-                WHERE case_id = :caseId AND name = :name
-                """)
-                .param("caseId", caseId)
-                .param("name", step.measure())
-                .query((rs, n) -> {
-                    double value = rs.getDouble("value");
-                    return new Served(rs.wasNull() ? null : value, rs.getString("unit"), rs.getString("status"));
-                })
-                .optional();
+        String name = parameterName(step);
+        Optional<Served> served = load(caseId, name);
 
         if (served.isEmpty()) {
-            // Either the case is not approved, or the engine produced nothing for
-            // this measure at all.
+            // Either the case is not approved, or the engine produced nothing
+            // for this parameter at all.
             return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
-                    "No served value for " + step.measure() + " on this case.");
+                    "No served value for " + name + " on this case.");
         }
 
         Served found = served.get();
-        boolean notMeasurable = "NOT_MEASURABLE".equals(found.status()) || found.value() == null;
+        return switch (step.answerKind()) {
+            case NUMERIC -> numeric(step, found);
+            case CATEGORICAL -> categorical(caseId, step, found);
+            case MULTI_CATEGORICAL -> leads(caseId, step, found);
+        };
+    }
 
-        return GroundTruth.numeric(
-                step.step(), step.concept(), found.value(), found.unit(),
+    /** Numeric steps are graded against a measure; the rest are named directly. */
+    private String parameterName(InterpretationStep step) {
+        return step.measure() != null ? step.measure() : step.concept();
+    }
+
+    private Optional<Served> load(long caseId, String name) {
+        return db.sql("""
+                SELECT kind, value, text_value, unit, status
+                FROM v_served_parameters
+                WHERE case_id = :caseId AND name = :name
+                """)
+                .param("caseId", caseId)
+                .param("name", name)
+                .query((rs, n) -> {
+                    double value = rs.getDouble("value");
+                    return new Served(
+                            rs.getString("kind"),
+                            rs.wasNull() ? null : value,
+                            rs.getString("text_value"),
+                            rs.getString("unit"),
+                            rs.getString("status"));
+                })
+                .optional();
+    }
+
+    private GroundTruth numeric(InterpretationStep step, Served served) {
+        // A reviewer may correct a numeric measure to "there is nothing here to
+        // measure", which is a different statement from a missing value.
+        boolean notMeasurable = "NOT_MEASURABLE".equals(served.status())
+                || "NOT_MEASURABLE".equals(served.text())
+                || served.value() == null;
+
+        return GroundTruth.numeric(step.step(), step.concept(), served.value(), served.unit(),
                 step.toleranceAbs(), step.tolerancePct(), notMeasurable);
     }
 
+    private GroundTruth categorical(long caseId, InterpretationStep step, Served served) {
+        String value = served.text();
+
+        if (value == null || value.isBlank()) {
+            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
+                    "The engine did not determine the " + step.concept() + " for this case.");
+        }
+        if ("INDETERMINATE".equals(value)) {
+            // The engine saying it could not tell is not an answer key. Marking a
+            // student wrong for disagreeing with a non-answer would present the
+            // platform's limitation as their mistake.
+            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
+                    "The " + step.concept() + " could not be determined for this case, "
+                            + "so the step is not marked.");
+        }
+        if ("rhythm".equals(step.concept()) && rhythmContradictsTheLabel(caseId, value)) {
+            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
+                    "The cardiologist's annotation and the rhythm classifier disagree about this "
+                            + "recording, so the step is not marked. A reviewer can settle it by "
+                            + "correcting the rhythm.");
+        }
+        return GroundTruth.categorical(step.step(), step.concept(), value);
+    }
+
     /**
-     * The rhythm, unless the engine and the cardiologist disagree about it.
+     * Whether the rhythm on record contradicts the inherited diagnosis.
      *
      * <p>Atrial fibrillation and flutter are irregularly irregular by definition.
-     * On 10 of the 50 fibrillation cases in the bank the rhythm classifier
-     * instead called the rhythm regularly irregular, usually because ectopic
-     * beats gave the R-R series a periodic-looking autocorrelation. A student
-     * answering "irregularly irregular" on one of those -- the textbook answer,
-     * and the right one -- would be marked wrong by the platform.
+     * On 10 of the 50 fibrillation cases in the bank the classifier instead
+     * called the rhythm regularly irregular, usually because ectopic beats gave
+     * the R-R series a periodic-looking autocorrelation. A student answering
+     * "irregularly irregular" -- the textbook answer, and the right one -- would
+     * be marked wrong.
      *
-     * <p>That is risk 1 in the brief exactly: a measurement the platform is
-     * confident about and wrong about, marking a correct student answer
-     * incorrect. Neither side is assumed right here. The step is simply not
-     * marked, the same resolution the engine uses when an inherited diagnosis
-     * contradicts a computed P-wave measurement.
+     * <p>Neither side is assumed correct; the step is simply not marked. Note
+     * that the value checked here is the served one, so a reviewer who corrects
+     * the rhythm resolves the conflict and the step becomes markable again.
      */
-    private GroundTruth rhythm(long caseId, InterpretationStep step) {
-        GroundTruth computed = categorical(caseId, step, "rhythm_regularity");
-        if (!computed.available()) {
-            return computed;
+    private boolean rhythmContradictsTheLabel(long caseId, String servedRhythm) {
+        if ("IRREGULARLY_IRREGULAR".equals(servedRhythm)) {
+            return false;
         }
-
-        boolean fibrillatingByLabel = Boolean.TRUE.equals(db.sql("""
+        return Boolean.TRUE.equals(db.sql("""
                 SELECT scp_codes ?? 'AFIB' OR scp_codes ?? 'AFLT'
                 FROM cases WHERE id = :caseId
                 """)
@@ -109,93 +148,32 @@ public class GroundTruthRepository {
                 .query(Boolean.class)
                 .optional()
                 .orElse(false));
-
-        if (fibrillatingByLabel && !"IRREGULARLY_IRREGULAR".equals(computed.category())) {
-            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
-                    "The cardiologist's annotation and the rhythm classifier disagree about this "
-                            + "recording, so the step is not marked. A student is not marked wrong "
-                            + "for a disagreement between the platform and the label.");
-        }
-        return computed;
     }
 
-    private GroundTruth categorical(long caseId, InterpretationStep step, String column) {
-        String value = db.sql("SELECT " + column + " FROM cases WHERE id = :caseId")
-                .param("caseId", caseId)
-                .query(String.class)
-                .optional()
-                .orElse(null);
+    private GroundTruth leads(long caseId, InterpretationStep step, Served served) {
+        String value = served.text() == null ? "" : served.text().trim();
+        Set<String> deviating = value.isBlank() ? Set.of() : Set.of(value.split(","));
 
-        if (value == null) {
-            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
-                    "The engine did not determine the " + step.concept() + " for this case.");
-        }
-        if ("INDETERMINATE".equals(value)) {
-            // The engine saying it could not tell is not an answer to grade a
-            // student against. Marking them wrong for disagreeing with a
-            // non-answer would be the platform's fault presented as theirs.
-            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
-                    "The engine could not determine the " + step.concept()
-                            + " for this case, so the step is not marked.");
-        }
-        return GroundTruth.categorical(step.step(), step.concept(), value);
-    }
-
-    /**
-     * Whether P waves are present.
-     *
-     * <p>Derived from the P duration rather than stored separately: a P duration
-     * the engine reports as NOT_MEASURABLE means it found no P wave to measure,
-     * which is the same statement.
-     */
-    private GroundTruth pWaves(long caseId, InterpretationStep step) {
-        Optional<String> status = db.sql("""
-                SELECT status FROM v_served_measurements
-                WHERE case_id = :caseId AND name = 'p_duration'
+        // Which leads deviate is the served value, so a reviewer's correction
+        // decides it. The direction is read from the engine separately and only
+        // to choose between "you missed an elevation" and "you missed a
+        // depression"; a reviewer who edits the lead set is not asked to restate
+        // the direction, so this stays the engine's view of it.
+        Set<String> elevated = Set.copyOf(db.sql("""
+                SELECT lead FROM case_st_deviations
+                WHERE case_id = :caseId AND finding = 'ELEVATION'
                 """)
                 .param("caseId", caseId)
                 .query(String.class)
-                .optional();
+                .list());
 
-        if (status.isEmpty()) {
-            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
-                    "No served P-wave measurement for this case.");
-        }
-        boolean absent = "NOT_MEASURABLE".equals(status.get());
-        return GroundTruth.categorical(step.step(), step.concept(), absent ? "ABSENT" : "PRESENT");
-    }
+        Set<String> depressed = deviating.stream()
+                .filter(lead -> !elevated.contains(lead))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
 
-    /** Which leads deviate, and in which direction. */
-    private GroundTruth stSegment(long caseId, InterpretationStep step) {
-        Map<String, Set<String>> byFinding = Map.of(
-                "ELEVATION", new HashSet<>(),
-                "DEPRESSION", new HashSet<>());
-
-        var rows = db.sql("""
-                SELECT lead, finding FROM case_st_deviations
-                WHERE case_id = :caseId AND finding <> 'NORMAL'
-                """)
-                .param("caseId", caseId)
-                .query((rs, n) -> Map.entry(rs.getString("finding"), rs.getString("lead")))
-                .list();
-
-        // A case with no ST deviation is a perfectly gradable case whose answer
-        // is "none", so an empty result is not the same as no ground truth. The
-        // case's existence is what is checked, not the row count.
-        boolean caseExists = Boolean.TRUE.equals(db.sql("SELECT true FROM cases WHERE id = :caseId")
-                .param("caseId", caseId)
-                .query(Boolean.class)
-                .optional()
-                .orElse(false));
-        if (!caseExists) {
-            return GroundTruth.unavailable(step.step(), step.concept(), step.answerKind(),
-                    "No such case.");
-        }
-
-        for (var row : rows) {
-            byFinding.getOrDefault(row.getKey(), new HashSet<>()).add(row.getValue());
-        }
         return GroundTruth.leads(step.step(), step.concept(),
-                Set.copyOf(byFinding.get("ELEVATION")), Set.copyOf(byFinding.get("DEPRESSION")));
+                elevated.stream().filter(deviating::contains)
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet()),
+                depressed);
     }
 }

@@ -18,15 +18,15 @@ import java.util.Optional;
  * truth, grades students wrong, and lands in the measurement-agreement table as
  * if the engine had been 2000 ms out.
  */
-final class Plausibility {
+public final class Plausibility {
 
-    record Bounds(double low, double high, String unit) {
+    public record Bounds(double low, double high, String unit) {
 
-        boolean contains(double value) {
+        public boolean contains(double value) {
             return value >= low && value <= high;
         }
 
-        String describe() {
+        public String describe() {
             return "%.0f to %.0f %s".formatted(low, high, unit);
         }
     }
@@ -45,7 +45,7 @@ final class Plausibility {
     private Plausibility() {
     }
 
-    static Optional<Bounds> forMeasure(String name) {
+    public static Optional<Bounds> forMeasure(String name) {
         return Optional.ofNullable(BY_MEASURE.get(name));
     }
 }

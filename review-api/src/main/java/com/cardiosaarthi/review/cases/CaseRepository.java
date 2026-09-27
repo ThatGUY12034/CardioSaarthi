@@ -61,7 +61,7 @@ public class CaseRepository {
                 detail.rhythmRegularity(), detail.rrMeanMs(), detail.axisDegrees(), detail.axisCategory(),
                 detail.warnings(), detail.cleanImageUrl(), detail.annotatedImageUrl(), detail.narrative(),
                 detail.reviewStatus(), detail.reviewedAt(), detail.reviewedBy(),
-                measurements(caseId), stDeviations(caseId));
+                measurements(caseId), stDeviations(caseId), parameters(caseId));
     }
 
     public List<MeasurementView> measurements(long caseId) {
@@ -95,6 +95,75 @@ public class CaseRepository {
                         nullableDouble(rs, "corrected_value"),
                         nullableLong(rs, "corrected_by"),
                         rs.getObject("corrected_at", OffsetDateTime.class)))
+                .list();
+    }
+
+    /**
+     * All nine interpretation parameters for a case, whether or not it is
+     * approved.
+     *
+     * <p>v_served_parameters covers approved cases only, because that view exists
+     * to decide what a student may be graded against. A reviewer needs to see the
+     * parameters of a case that is still pending -- that is the whole job -- so
+     * this reads the underlying values and applies any correction itself.
+     */
+    public List<ParameterView> parameters(long caseId) {
+        return db.sql("""
+                WITH latest AS (
+                    SELECT DISTINCT ON (name) name, corrected_value, corrected_text
+                    FROM measurement_corrections
+                    WHERE case_id = :caseId
+                    ORDER BY name, created_at DESC, id DESC
+                )
+                SELECT s.step, s.concept AS name, s.label, s.answer_kind AS kind,
+                       CASE WHEN s.answer_kind = 'NUMERIC'
+                            THEN coalesce(l.corrected_value, m.value) END AS value,
+                       CASE WHEN s.answer_kind = 'NUMERIC' THEN l.corrected_text
+                            WHEN s.concept = 'rhythm'     THEN coalesce(l.corrected_text, c.rhythm_regularity)
+                            WHEN s.concept = 'axis'       THEN coalesce(l.corrected_text, c.axis_category)
+                            WHEN s.concept = 'p_waves'    THEN coalesce(l.corrected_text,
+                                 CASE WHEN pm.status = 'NOT_MEASURABLE' THEN 'ABSENT'
+                                      WHEN pm.status IS NULL THEN NULL ELSE 'PRESENT' END)
+                            WHEN s.concept = 'st_segment' THEN coalesce(l.corrected_text, st.leads, '')
+                       END AS text_value,
+                       m.unit, m.mad, m.confidence,
+                       coalesce(m.status, 'OK') AS status,
+                       m.value AS computed_value,
+                       CASE WHEN s.concept = 'rhythm'     THEN c.rhythm_regularity
+                            WHEN s.concept = 'axis'       THEN c.axis_category
+                            WHEN s.concept = 'p_waves'    THEN
+                                 CASE WHEN pm.status = 'NOT_MEASURABLE' THEN 'ABSENT'
+                                      WHEN pm.status IS NULL THEN NULL ELSE 'PRESENT' END
+                            WHEN s.concept = 'st_segment' THEN coalesce(st.leads, '')
+                       END AS computed_text,
+                       l.name IS NOT NULL AS corrected
+                FROM interpretation_steps s
+                CROSS JOIN cases c
+                LEFT JOIN case_measurements m ON m.case_id = c.id AND m.name = s.measure
+                LEFT JOIN case_measurements pm ON pm.case_id = c.id AND pm.name = 'p_duration'
+                LEFT JOIN latest l ON l.name = s.concept OR l.name = s.measure
+                LEFT JOIN LATERAL (
+                    SELECT string_agg(d.lead, ',' ORDER BY d.lead) AS leads
+                    FROM case_st_deviations d WHERE d.case_id = c.id AND d.finding <> 'NORMAL'
+                ) st ON true
+                WHERE c.id = :caseId
+                ORDER BY s.step
+                """)
+                .param("caseId", caseId)
+                .query((rs, n) -> new ParameterView(
+                        rs.getInt("step"),
+                        rs.getString("name"),
+                        rs.getString("label"),
+                        rs.getString("kind"),
+                        nullableDouble(rs, "value"),
+                        rs.getString("text_value"),
+                        rs.getString("unit"),
+                        nullableDouble(rs, "mad"),
+                        nullableDouble(rs, "confidence"),
+                        rs.getString("status"),
+                        nullableDouble(rs, "computed_value"),
+                        rs.getString("computed_text"),
+                        rs.getBoolean("corrected")))
                 .list();
     }
 
@@ -168,6 +237,7 @@ public class CaseRepository {
                 rs.getString("review_status"),
                 rs.getObject("reviewed_at", OffsetDateTime.class),
                 nullableLong(rs, "reviewed_by"),
+                List.of(),
                 List.of(),
                 List.of());
     }
