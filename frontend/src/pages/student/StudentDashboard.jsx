@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Navbar from "../../components/Navbar";
-import Sidebar from "../../components/Sidebar";
+import Layout from "../../components/Layout";
 import StatCard from "../../components/StatCard";
 import CaseEcg from "../../components/CaseEcg";
 import { getPractisableCases } from "../../api/studyApi";
@@ -58,11 +57,7 @@ export default function StudentDashboard() {
 
 
   return (
-    <div className="min-h-screen bg-brand-bg">
-      <Navbar />
-      <div className="flex">
-        <Sidebar role="STUDENT" />
-        <main className="flex-1 p-8">
+    <Layout role="STUDENT">
           <h1 className="text-3xl font-bold">Good Morning, {user?.name?.split(" ")[0] || "Saniya"}! 👋</h1>
           <p className="text-brand-muted mt-1">Keep learning, one beat at a time.</p>
 
@@ -119,8 +114,6 @@ export default function StudentDashboard() {
               </ul>
             </div>
           </div>
-        </main>
-      </div>
-    </div>
+    </Layout>
   );
 }
