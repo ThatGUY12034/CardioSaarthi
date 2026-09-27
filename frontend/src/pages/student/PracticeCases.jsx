@@ -38,6 +38,11 @@ export default function PracticeCases() {
   const navigate = useNavigate();
   const [cases, setCases] = useState(null);
   const [mode, setMode] = useState("BEGINNER_TUTOR");
+  // Off by default, and that is the point. The condition on a card is the
+  // answer to step 2: a card reading "atrial fibrillation" tells the student
+  // the rhythm before they have looked at the trace. A student who wants to
+  // drill one topic can still ask for it; nobody is handed it unasked.
+  const [revealTopics, setRevealTopics] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -85,6 +90,16 @@ export default function PracticeCases() {
           <p className="text-[11px] text-brand-muted mt-2 max-w-xs">
             {MODES.find((option) => option.value === mode).blurb}
           </p>
+
+          <label className="flex items-center gap-2 mt-3 text-[11px] text-brand-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={revealTopics}
+              onChange={(event) => setRevealTopics(event.target.checked)}
+              className="accent-brand-primary"
+            />
+            Show what each case covers (reveals the answer)
+          </label>
         </div>
       </div>
 
@@ -114,11 +129,13 @@ export default function PracticeCases() {
                   {item.sex}
                   {item.age ? `, ${Math.round(item.age)} years` : ""}
                 </p>
-                {/* The conditions are shown, not the diagnosis: which topics this
-                    case covers is useful for choosing what to practise, and it
-                    does not answer the case, whose reading is still the task. */}
-                {item.conditionCodes.length > 0 && (
-                  <p className="text-[11px] text-brand-muted mt-2">
+                {/* Hidden unless asked for. These codes name the condition --
+                    "atrial fibrillation" is the answer to step 2 -- so printing
+                    them beside the trace answers the question the student is
+                    about to be examined on. Choosing what to practise is a real
+                    need, so it stays available behind a deliberate click. */}
+                {revealTopics && item.conditionCodes.length > 0 && (
+                  <p className="text-[11px] text-brand-warning/80 mt-2">
                     {item.conditionCodes.map((code) => code.replace(/_/g, " ")).join(" · ")}
                   </p>
                 )}
