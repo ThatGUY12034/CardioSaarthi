@@ -53,6 +53,13 @@ MEASURE_NAMES = (
 AGE_CENSOR_THRESHOLD = 89.0
 
 
+# Docker publishes the database on 127.0.0.1 only. "localhost" can resolve to
+# ::1 first, where nothing is listening, and a connect with no timeout then sits
+# on a dead IPv6 handshake for minutes with no output at all. The timeout turns
+# that into an error instead of a hang.
+CONNECT_TIMEOUT_SECONDS = 10
+
+
 def _connect(url: str):
     try:
         import psycopg
@@ -62,7 +69,7 @@ def _connect(url: str):
             "  pip install 'psycopg[binary]>=3.1'\n"
             "It is declared under the 'db' optional dependency group in pyproject.toml."
         )
-    return psycopg.connect(url, autocommit=False)
+    return psycopg.connect(url, autocommit=False, connect_timeout=CONNECT_TIMEOUT_SECONDS)
 
 
 def _json(value: Any):

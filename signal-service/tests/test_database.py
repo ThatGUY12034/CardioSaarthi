@@ -134,12 +134,12 @@ EXPECTED_VIEWS = {
 
 def test_all_tables_present(cur):
     cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")
-    assert EXPECTED_TABLES <= {row[0] for row in cur.fetchall()}
+    assert {row[0] for row in cur.fetchall()} >= EXPECTED_TABLES
 
 
 def test_all_views_present(cur):
     cur.execute("SELECT table_name FROM information_schema.views WHERE table_schema = 'public'")
-    assert EXPECTED_VIEWS <= {row[0] for row in cur.fetchall()}
+    assert {row[0] for row in cur.fetchall()} >= EXPECTED_VIEWS
 
 
 def test_pgvector_available(cur):
