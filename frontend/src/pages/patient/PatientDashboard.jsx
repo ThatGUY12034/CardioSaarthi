@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import Layout from "../../components/Layout";
-import ECGWaveform from "../../components/ECGWaveform";
+import CaseEcg from "../../components/CaseEcg";
 
 export default function PatientDashboard() {
   return (
@@ -12,7 +12,7 @@ export default function PatientDashboard() {
         <h3 className="font-semibold mb-4">Your Latest Report</h3>
         <div className="flex flex-col md:flex-row gap-6">
           <div className="md:w-1/2">
-            <ECGWaveform height={180} label="Report Date: 27 Apr 2026" />
+            <CaseEcg height={180} label="Report Date: 27 Apr 2026" />
           </div>
           <div className="flex-1">
             <h4 className="font-medium">Simple Explanation</h4>

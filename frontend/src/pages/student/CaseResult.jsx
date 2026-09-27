@@ -1,6 +1,6 @@
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import Layout from "../../components/Layout";
-import ECGWaveform from "../../components/ECGWaveform";
+import CaseEcg from "../../components/CaseEcg";
 
 const STEP_RESULTS = [
   { name: "Rate", yourAnswer: "110 bpm", correct: "77 bpm", score: 0 },
@@ -52,7 +52,7 @@ export default function CaseResult() {
 
       <div className="grid lg:grid-cols-3 gap-6 mt-6">
         <div className="lg:col-span-2 card p-5">
-          <ECGWaveform height={340} label="Reference ECG" />
+          <CaseEcg height={340} label="Reference ECG" />
         </div>
 
         <div className="card p-5">

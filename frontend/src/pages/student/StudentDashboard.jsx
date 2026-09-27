@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/Navbar";
 import Sidebar from "../../components/Sidebar";
 import StatCard from "../../components/StatCard";
-import ECGWaveform from "../../components/ECGWaveform";
+import CaseEcg from "../../components/CaseEcg";
 import axiosClient from "../../api/axiosClient";
 import { useAuth } from "../../context/AuthContext";
 
@@ -46,7 +46,7 @@ export default function StudentDashboard() {
               {continueCase && (
                 <div className="flex gap-4 items-center">
                   <div className="w-28 shrink-0">
-                    <ECGWaveform height={80} />
+                    <CaseEcg height={80} />
                   </div>
                   <div className="flex-1">
                     <p className="font-medium">{continueCase.title}</p>

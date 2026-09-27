@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout";
-import ECGWaveform from "../../components/ECGWaveform";
+import CaseEcg from "../../components/CaseEcg";
 
 const STEPS = ["Rate", "Rhythm", "P waves", "PR interval", "QRS complex", "ST segment", "T waves"];
 
@@ -63,7 +63,7 @@ export default function CasePractice() {
 
       <div className="grid lg:grid-cols-3 gap-6 mt-6">
         <div className="lg:col-span-2 card p-5">
-          <ECGWaveform height={380} label="12-Lead ECG — 25 mm/s, 10 mm/mV" />
+          <CaseEcg height={380} label="12-Lead ECG — 25 mm/s, 10 mm/mV" />
         </div>
 
         <div className="space-y-5">

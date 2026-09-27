@@ -1,5 +1,5 @@
 import Layout from "../../components/Layout";
-import ECGWaveform from "../../components/ECGWaveform";
+import CaseEcg from "../../components/CaseEcg";
 
 const KEY_TERMS = [
   { term: "Heart Rate", value: "60–100 bpm (Normal)" },
@@ -21,7 +21,7 @@ export default function ReportExplanation() {
 
       <div className="grid lg:grid-cols-3 gap-6 mt-8">
         <div className="lg:col-span-2 card p-5">
-          <ECGWaveform height={300} label="Your ECG" />
+          <CaseEcg height={300} label="Your ECG" />
         </div>
 
         <div className="card p-6">

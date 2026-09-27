@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout";
-import ECGWaveform from "../../components/ECGWaveform";
+import CaseEcg from "../../components/CaseEcg";
 import { useState } from "react";
 
 const MOCK_CASES = [
@@ -52,7 +52,7 @@ export default function PracticeCases() {
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
         {filtered.map((c) => (
           <div key={c.id} className="card overflow-hidden hover:border-brand-primary/50 transition-colors">
-            <ECGWaveform height={140} />
+            <CaseEcg height={140} />
             <div className="p-5">
               <div className="flex items-center justify-between">
                 <span className={`text-xs px-2 py-1 rounded ${diffColor[c.difficulty]}`}>
