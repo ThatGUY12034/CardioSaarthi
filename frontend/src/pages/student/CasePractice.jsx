@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import Layout from "../../components/Layout";
 import EcgImage from "../../components/EcgImage";
+import CaseBrief from "../../components/CaseBrief";
 import {
   errorMessage,
   finishSession,
@@ -317,6 +318,12 @@ export default function CasePractice() {
             25 mm/s and 10 mm/mV: one large square is 0.2 s and 0.5 mV. Click the trace to enlarge
             it.
           </p>
+        </div>
+
+        {/* Under the trace rather than above the steps: it is context for the
+            reading, not the first thing to answer. */}
+        <div className="lg:col-start-1">
+          <CaseBrief caseId={Number(id)} />
         </div>
 
         <div className="space-y-4">

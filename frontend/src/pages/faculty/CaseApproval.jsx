@@ -157,6 +157,65 @@ function LeadPicker({ value, onChange }) {
   );
 }
 
+/**
+ * The written scenario, laid out for checking rather than for reading.
+ *
+ * <p>A reviewer approving a case approves the story that goes with it. The two
+ * things worth catching are a clinical fact about the ECG, which the validator
+ * already refuses, and a detail that contradicts the patient the annotation
+ * describes, which only a human notices.
+ */
+function NarrativeReview({ narrative }) {
+  const story = typeof narrative === "string" ? safeParse(narrative) : narrative;
+  if (!story) return null;
+
+  const vitals = story.vitals || {};
+  return (
+    <details className="rounded border border-white/10 bg-brand-bg2/40">
+      <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
+        Clinical scenario
+      </summary>
+      <div className="px-4 pb-4 space-y-3 text-sm">
+        {story.presenting_complaint && (
+          <p>
+            <span className="text-xs text-brand-muted block">Presenting complaint</span>
+            {story.presenting_complaint}
+          </p>
+        )}
+        {story.history && (
+          <p>
+            <span className="text-xs text-brand-muted block">History</span>
+            {story.history}
+          </p>
+        )}
+        {story.examination && (
+          <p>
+            <span className="text-xs text-brand-muted block">On examination</span>
+            {story.examination}
+          </p>
+        )}
+        {Object.keys(vitals).length > 0 && (
+          <p className="text-xs text-brand-muted">
+            {Object.entries(vitals)
+              .filter(([key]) => key !== "heart_rate_source")
+              .map(([key, value]) => `${key.replace(/_/g, " ")}: ${value}`)
+              .join("  ·  ")}
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
+/** Stored as jsonb; some callers hand it over as text. Either is fine. */
+function safeParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export default function CaseApproval() {
   const [reloads, setReloads] = useState(0);
   const [queue, setQueue] = useState({ key: null, items: [], total: 0 });
@@ -329,6 +388,12 @@ export default function CaseApproval() {
                           ))}
                         </ul>
                       )}
+
+                      {/* The scenario the student will be shown. Approving a
+                          case approves this too, so a reviewer has to be able
+                          to read it -- it was served by the API all along and
+                          displayed nowhere. */}
+                      {shown.narrative && <NarrativeReview narrative={shown.narrative} />}
 
                       <div>
                         <h3 className="font-semibold text-sm mb-2">

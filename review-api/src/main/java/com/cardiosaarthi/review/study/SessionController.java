@@ -8,6 +8,8 @@ import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -82,6 +84,46 @@ public class SessionController {
                         rs.getBoolean("has_narrative"),
                         java.util.Arrays.asList((String[]) rs.getArray("condition_codes").getArray())))
                 .list();
+    }
+
+    /**
+     * The patient around the tracing.
+     *
+     * <p>What a clinician is told before they read an ECG: the presenting
+     * complaint, the history, the examination, the vitals and the relevant
+     * labs. Section 4.5 of the brief calls for it and the pipeline has been
+     * writing one per case all along; until now nothing served it to a student,
+     * so they read a trace with no patient attached.
+     *
+     * <p>Served only for an approved case, like everything else a student can
+     * reach. The stored value is already JSON, so it is passed through as it
+     * stands rather than parsed into objects and rebuilt -- the shape is the
+     * narrative validator's business, not this endpoint's.
+     *
+     * <p>It states no ECG finding and no diagnosis. That is enforced where the
+     * narrative is written and validated, not here, but it is the reason this
+     * can be shown beside the trace without answering the questions the student
+     * is about to be asked.
+     */
+    @GetMapping(value = "/cases/{id}/brief", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> brief(@PathVariable long id) {
+        String narrative = db.sql("""
+                SELECT narrative::text
+                FROM cases
+                WHERE id = :id AND review_status = 'approved'
+                """)
+                .param("id", id)
+                .query(String.class)
+                .optional()
+                .orElseThrow(() -> new NotFoundException("no case " + id));
+
+        if (narrative == null) {
+            // The case is real and approved, and no scenario has been written
+            // for it yet. That is a fact about the case, not an error, and the
+            // interface shows the trace without a brief.
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(narrative);
     }
 
     @PostMapping("/sessions")

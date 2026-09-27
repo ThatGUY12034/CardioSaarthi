@@ -15,6 +15,17 @@ export async function getPractisableCases(limit = 24) {
   return data;
 }
 
+/**
+ * The patient around the tracing: complaint, history, examination, vitals, labs.
+ *
+ * <p>Returns null when the case has no scenario written yet, which is a fact
+ * about the case rather than a failure -- the trace is shown without a brief.
+ */
+export async function getCaseBrief(caseId) {
+  const response = await axiosClient.get(`/study/cases/${caseId}/brief`);
+  return response.status === 204 ? null : response.data;
+}
+
 /** The nine steps, and what each accepts. Served so the form cannot drift. */
 export async function getSteps() {
   const { data } = await axiosClient.get("/study/steps");
