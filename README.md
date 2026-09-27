@@ -22,9 +22,9 @@ The full specification is in [docs/brief.md](docs/brief.md).
 
 | Layer | What it is | Nature | Status |
 |---|---|---|---|
-| 1 — Content pipeline | Ingest, measure, render, generate scenarios, faculty review | Offline batch | measurement + rendering **done**; scenarios and review queue next |
+| 1 — Content pipeline | Ingest, measure, render, generate scenarios, faculty review | Offline batch | measurement, rendering, case bank and review API **done**; scenario generation next |
 | 2 — Student runtime | Guided case sessions, grading, tutoring, competency tracking | Live | not started |
-| 3 — Faculty console | Content review queue + cohort analytics | Live | not started |
+| 3 — Faculty console | Content review queue + cohort analytics | Live | review API **done** ([review-api](review-api/README.md)); console UI and cohort analytics not started |
 | 4 — Patient explainer | Plain-language explanation of an issued ECG report | Live | not started |
 
 ## Where Layer 1 stands
@@ -126,6 +126,31 @@ Run the tests. Dataset-backed tests skip cleanly if the data is not downloaded:
 ```bash
 pytest signal-service/tests -q
 ```
+
+## Running the stack
+
+Three services, in this order. The database must be up first because Flyway builds the schema when
+the review service starts, and the ingest needs the tables to exist.
+
+```bash
+docker compose up -d
+```
+
+```bash
+cd review-api && ./mvnw spring-boot:run
+```
+
+```bash
+python signal-service/scripts/ingest_cases.py
+```
+
+That loads all 714 measured cases as `pending`. Nothing is servable until a named reviewer approves
+it — `v_served_measurements` returns no rows for an unapproved case, so a case cannot reach a student
+by accident.
+
+Configuration is one `.env` at the repository root; copy `.env.example`. Endpoints, the queue
+ordering options and the rules the server enforces are documented in
+[review-api/README.md](review-api/README.md).
 
 ## Datasets
 
