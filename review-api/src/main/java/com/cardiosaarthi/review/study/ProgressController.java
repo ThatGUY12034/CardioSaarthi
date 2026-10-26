@@ -163,6 +163,60 @@ public class ProgressController {
     }
 
     // -----------------------------------------------------------------------
+    // what a teacher said
+    // -----------------------------------------------------------------------
+    public record Remark(long id, long sessionStepId, String reviewerName, String body,
+                         java.time.Instant createdAt, java.time.Instant readAt,
+                         int step, String stepLabel, Integer sourceEcgId, String errorLabel) {
+    }
+
+    /**
+     * Remarks a teacher has left on this student's attempts.
+     *
+     * <p>Unread first: a remark a student has not seen is the only one that can
+     * still change what they do next.
+     */
+    @GetMapping("/remarks")
+    public List<Remark> remarks(@RequestParam(defaultValue = "20") int limit) {
+        return db.sql("""
+                SELECT r.id, r.session_step_id, rv.full_name AS reviewer_name, r.body,
+                       r.created_at, r.read_at, ss.step, s.label AS step_label,
+                       c.source_ecg_id, ss.error_label
+                FROM faculty_remarks r
+                JOIN reviewers rv            ON rv.id = r.reviewer_id
+                JOIN session_steps ss        ON ss.id = r.session_step_id
+                JOIN sessions se             ON se.id = ss.session_id
+                JOIN cases c                 ON c.id = se.case_id
+                JOIN interpretation_steps s  ON s.step = ss.step
+                WHERE r.student_id = :studentId
+                ORDER BY (r.read_at IS NOT NULL), r.created_at DESC
+                LIMIT :limit
+                """)
+                .param("studentId", currentStudent.id())
+                .param("limit", Math.clamp(limit, 1, 100))
+                .query((rs, n) -> new Remark(
+                        rs.getLong("id"), rs.getLong("session_step_id"),
+                        rs.getString("reviewer_name"), rs.getString("body"),
+                        Timestamps.instant(rs, "created_at"),
+                        Timestamps.instant(rs, "read_at"),
+                        rs.getInt("step"), rs.getString("step_label"),
+                        Timestamps.integer(rs, "source_ecg_id"), rs.getString("error_label")))
+                .list();
+    }
+
+    /** Marking read is the one change permitted to a remark; a trigger enforces the rest. */
+    @org.springframework.web.bind.annotation.PostMapping("/remarks/{id}/read")
+    public void markRead(@org.springframework.web.bind.annotation.PathVariable long id) {
+        db.sql("""
+                UPDATE faculty_remarks SET read_at = now()
+                WHERE id = :id AND student_id = :studentId AND read_at IS NULL
+                """)
+                .param("id", id)
+                .param("studentId", currentStudent.id())
+                .update();
+    }
+
+    // -----------------------------------------------------------------------
     // leaderboard
     // -----------------------------------------------------------------------
     /**

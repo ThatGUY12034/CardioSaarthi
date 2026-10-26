@@ -3,11 +3,16 @@ package com.cardiosaarthi.review.admin;
 import java.time.Instant;
 import java.util.List;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cardiosaarthi.review.error.InvalidReviewException;
@@ -46,10 +52,12 @@ public class AdminController {
 
     private final JdbcClient db;
     private final ReviewerService reviewers;
+    private final PasswordEncoder passwordEncoder;
 
-    AdminController(JdbcClient db, ReviewerService reviewers) {
+    AdminController(JdbcClient db, ReviewerService reviewers, PasswordEncoder passwordEncoder) {
         this.db = db;
         this.reviewers = reviewers;
+        this.passwordEncoder = passwordEncoder;
     }
 
     // -----------------------------------------------------------------------
@@ -200,6 +208,62 @@ public class AdminController {
                 .filter(account -> account.id() == id)
                 .findFirst()
                 .orElseThrow(() -> new NotFoundException("no " + kind + " " + id));
+    }
+
+    // -----------------------------------------------------------------------
+    // enrolment
+    // -----------------------------------------------------------------------
+    /**
+     * @param password hashed before it reaches the database and never logged.
+     *                 Twelve characters, the same floor the reviewer endpoint
+     *                 enforces: the four-digit demonstration logins come from a
+     *                 flag that defaults to off and are not created here.
+     */
+    public record NewStudent(
+            @NotBlank @Email(message = "a valid email address is required") String email,
+            @NotBlank(message = "full name is required") @Size(max = 200) String fullName,
+            @NotBlank(message = "college ID is required") String collegeId,
+            String cohort,
+            @NotBlank @Size(min = 12, message = "password must be at least 12 characters")
+            String password) {
+    }
+
+    /**
+     * Enrol a student, or reset an existing one's password.
+     *
+     * <p>Upsert rather than a conflict, for the same reason the reviewer
+     * endpoint does it: the realistic administrative task is "this student has
+     * forgotten their password", and a create-only endpoint leaves no way to do
+     * it. Their attempts and remarks are keyed on the row, so they survive it.
+     */
+    @PostMapping("/students")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Account enrol(@Valid @RequestBody NewStudent request) {
+        long id = db.sql("""
+                INSERT INTO students (email, full_name, college_id, cohort, password_hash)
+                VALUES (:email, :fullName, :collegeId, :cohort, :hash)
+                ON CONFLICT (lower(email)) DO UPDATE SET
+                    full_name     = excluded.full_name,
+                    college_id    = excluded.college_id,
+                    cohort        = excluded.cohort,
+                    password_hash = excluded.password_hash,
+                    active        = true
+                RETURNING id
+                """)
+                .param("email", request.email().trim())
+                .param("fullName", request.fullName().trim())
+                .param("collegeId", request.collegeId().trim())
+                .param("cohort", request.cohort() == null || request.cohort().isBlank()
+                        ? null : request.cohort().trim())
+                .param("hash", passwordEncoder.encode(request.password()))
+                .query(Long.class)
+                .single();
+
+        log.info("administrator {} enrolled student {}", reviewers.current().email(), id);
+        return users("student").stream()
+                .filter(a -> a.id() == id)
+                .findFirst()
+                .orElseThrow(() -> new NotFoundException("no student " + id));
     }
 
     // -----------------------------------------------------------------------
