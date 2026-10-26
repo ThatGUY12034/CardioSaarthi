@@ -4,6 +4,7 @@ import Layout from "../../components/Layout";
 import EcgImage from "../../components/EcgImage";
 import CaseBrief from "../../components/CaseBrief";
 import { InlineError } from "../../components/States";
+import TutorPanel from "../../components/TutorPanel";
 import {
   errorMessage,
   finishSession,
@@ -429,6 +430,17 @@ export default function CasePractice() {
                 </p>
               )}
             </div>
+          )}
+
+          {/* Ask about the concept, never about this recording. The tutor
+              quotes approved reference material; the trace in front of the
+              student is the engine's business and the reviewer's. */}
+          {currentStep && (
+            <TutorPanel
+              concept={currentStep.concept}
+              label={currentStep.label}
+              sessionId={session.sessionId}
+            />
           )}
 
           {/* The sequence itself, always in view. A reading is done in this

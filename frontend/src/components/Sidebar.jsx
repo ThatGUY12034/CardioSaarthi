@@ -13,6 +13,7 @@ const facultyLinks = [
   { to: "/faculty/students", label: "Students", icon: "◇" },
   { to: "/faculty/review", label: "Review Queue", icon: "◇" },
   { to: "/faculty/approvals", label: "Case Approval", icon: "◇" },
+  { to: "/faculty/library", label: "Reference Library", icon: "◇" },
 ];
 
 const patientLinks = [

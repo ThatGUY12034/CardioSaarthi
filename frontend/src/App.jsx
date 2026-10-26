@@ -14,6 +14,7 @@ import Leaderboard from "./pages/student/Leaderboard";
 import FacultyDashboard from "./pages/faculty/FacultyDashboard";
 import StudentPerformance from "./pages/faculty/StudentPerformance";
 import StudentProgress from "./pages/faculty/StudentProgress";
+import KnowledgeReview from "./pages/faculty/KnowledgeReview";
 import ReviewQueue from "./pages/faculty/ReviewQueue";
 import CaseApproval from "./pages/faculty/CaseApproval";
 
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/faculty/students/:id" element={<StudentProgress />} />
         <Route path="/faculty/review" element={<ReviewQueue />} />
         <Route path="/faculty/approvals" element={<CaseApproval />} />
+        <Route path="/faculty/library" element={<KnowledgeReview />} />
       </Route>
 
       {/* Patient */}
