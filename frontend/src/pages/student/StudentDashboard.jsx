@@ -3,50 +3,75 @@ import { useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout";
 import StatCard from "../../components/StatCard";
 import CaseEcg from "../../components/CaseEcg";
-import { getPractisableCases } from "../../api/studyApi";
+import { SkeletonCard } from "../../components/States";
+import {
+  getNextConcepts,
+  getPractisableCases,
+  getProgress,
+  getRecentSessions,
+} from "../../api/studyApi";
 import { useAuth } from "../../context/AuthContext";
 
-// Illustrative until the runtime serves a student's own history back. A fixed
-// list is a constant, not state -- nothing ever sets it.
-const RECENT = [
-  { id: 5, title: "Completed Case 5", time: "2 hours ago", icon: "✅" },
-  { id: 4, title: "Score 80% in Case 4", time: "1 day ago", icon: "🎯" },
-  { id: 1, title: "Started Case 6", time: "1 day ago", icon: "▶" },
-];
+/**
+ * The first screen a student sees, and now the first one telling the truth.
+ *
+ * <p>Completed, streak and average score were constants written into this file.
+ * They are read from the runtime, which has been recording the real thing since
+ * the session orchestrator was built.
+ *
+ * <p>The dashboard also now says what to practise next and why. That answer
+ * comes from the scheduler, not from the order cases happen to sit in.
+ */
+
+function timeAgo(iso) {
+  if (!iso) return "";
+  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 90) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
 
 export default function StudentDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  // totalCases is counted from the bank. The other three need a history of
-  // finished sessions, which the runtime records but does not yet serve back,
-  // so they are marked in the interface rather than quietly invented.
-  const [stats, setStats] = useState({ totalCases: null, completed: 5, streak: 3, avgScore: 78 });
-  const [continueCase, setContinueCase] = useState(null);
 
+  const [progress, setProgress] = useState(null);
+  const [continueCase, setContinueCase] = useState(null);
+  const [recent, setRecent] = useState([]);
+  const [next, setNext] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const cases = await getPractisableCases(50);
+        const [p, cases, sessions, concepts] = await Promise.all([
+          getProgress(),
+          getPractisableCases(50),
+          getRecentSessions(4),
+          getNextConcepts(3),
+        ]);
         if (cancelled) return;
-        setStats((current) => ({ ...current, totalCases: cases.length }));
-        // A real case, because this button starts a real session. It used to
-        // point at case 6, which does not exist in the bank -- the most
-        // prominent button on the first screen a student sees led to an error.
-        const next = cases[0];
-        if (next) {
-          setContinueCase({
-            id: next.caseId,
-            // Not the diagnosis. Naming it here would answer step 2 before the
-            // student has opened the case.
-            title: `Recording ${next.sourceEcgId ?? next.caseId}`,
-            subtitle: next.age ? `${next.sex}, ${Math.round(next.age)} years` : "Ready to read",
-          });
-        }
+        setProgress(p);
+        setRecent(sessions);
+        setNext(concepts);
+
+        // Resume an unfinished case if there is one; otherwise offer a new one.
+        const open = sessions.find((s) => s.state !== "CASE_COMPLETE");
+        const fresh = cases[0];
+        const chosen = open
+          ? { id: open.caseId, label: open.sourceEcgId ?? open.caseId, resuming: true }
+          : fresh
+            ? { id: fresh.caseId, label: fresh.sourceEcgId ?? fresh.caseId, resuming: false,
+                subtitle: fresh.age ? `${fresh.sex}, ${Math.round(fresh.age)} years` : null }
+            : null;
+        setContinueCase(chosen);
       } catch {
-        // The dashboard is still readable without it; the cases page reports
-        // the failure properly.
+        // The dashboard stays readable without its numbers; the pages that own
+        // each one report their own failure properly.
       }
     })();
     return () => {
@@ -54,66 +79,137 @@ export default function StudentDashboard() {
     };
   }, []);
 
-
+  const show = (value, suffix = "") =>
+    value === null || value === undefined ? "—" : `${value}${suffix}`;
 
   return (
     <Layout role="STUDENT">
-          <h1 className="text-3xl font-bold">Good Morning, {user?.name?.split(" ")[0] || "Saniya"}! 👋</h1>
-          <p className="text-brand-muted mt-1">Keep learning, one beat at a time.</p>
+      <h1 className="page-title">
+        Good to see you, {user?.name?.split(" ")[0] || "there"}
+      </h1>
+      <p className="page-subtitle">Keep learning, one beat at a time.</p>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mt-8">
-            <StatCard icon="🩺" label="Total Cases" value={stats.totalCases ?? "—"} />
-            <StatCard icon="✅" label="Completed" value={stats.completed} color="brand-success" />
-            <StatCard icon="🔥" label="Current Streak" value={`${stats.streak} days`} color="brand-warning" />
-            <StatCard icon="📊" label="Average Score" value={`${stats.avgScore}%`} color="brand-accent" />
-          </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mt-8">
+        <StatCard icon="🩺" label="Cases available" value={show(progress?.casesAvailable)} />
+        <StatCard
+          icon="✅"
+          label="Completed"
+          value={show(progress?.casesCompleted)}
+          color="brand-success"
+        />
+        <StatCard
+          icon="🔥"
+          label="Current streak"
+          value={progress ? `${progress.currentStreakDays} days` : "—"}
+          color="brand-warning"
+        />
+        <StatCard
+          icon="📊"
+          label="Average score"
+          value={show(progress?.averageScorePct, "%")}
+          color="brand-accent"
+        />
+      </div>
 
-          <p className="text-xs text-brand-muted mt-3">
-            Total cases is live from the approved bank. Completed, streak and average
-            score are illustrative until finished sessions are served back.
-          </p>
-
-          <div className="grid md:grid-cols-2 gap-6 mt-8">
-            <div className="card p-6">
-              <h3 className="font-semibold mb-4">Continue Learning</h3>
-              {continueCase && (
-                <div className="flex gap-4 items-center">
-                  <div className="w-28 shrink-0">
-                    <CaseEcg height={80} />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{continueCase.title}</p>
-                    {/* The patient, not a difficulty rating. The bank has no
-                        difficulty grade, and inventing one would be a claim
-                        about how hard a recording is to read. */}
-                    <p className="text-xs text-brand-muted mt-1">{continueCase.subtitle}</p>
-                  </div>
+      <div className="grid md:grid-cols-2 gap-6 mt-8">
+        <div className="card p-6">
+          <h2 className="font-semibold mb-4">
+            {continueCase?.resuming ? "Pick up where you left off" : "Start a case"}
+          </h2>
+          {continueCase ? (
+            <>
+              <div className="flex gap-4 items-center">
+                <div className="w-28 shrink-0">
+                  <CaseEcg caseId={continueCase.id} height={80} />
                 </div>
-              )}
+                <div className="flex-1">
+                  <p className="font-medium">Recording {continueCase.label}</p>
+                  {continueCase.subtitle && (
+                    <p className="text-xs text-brand-muted mt-1">{continueCase.subtitle}</p>
+                  )}
+                  {continueCase.resuming && (
+                    <p className="text-xs text-brand-warning mt-1">Session in progress</p>
+                  )}
+                </div>
+              </div>
               <button
                 onClick={() => navigate(`/student/cases/${continueCase.id}`)}
-                disabled={!continueCase}
-                className="btn-primary w-full mt-5 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="btn-primary w-full mt-5"
               >
-                Continue →
+                {continueCase.resuming ? "Resume →" : "Begin →"}
               </button>
-            </div>
+            </>
+          ) : (
+            <SkeletonCard lines={2} className="!p-0 !bg-transparent !border-0" />
+          )}
+        </div>
 
-            <div className="card p-6">
-              <h3 className="font-semibold mb-4">Recent Activity</h3>
-              <ul className="space-y-3">
-                {RECENT.map((r) => (
-                  <li key={r.id} className="flex items-start gap-3 text-sm">
-                    <span className="text-brand-accent">{r.icon}</span>
-                    <div className="flex-1">
-                      <p>{r.title}</p>
-                      <p className="text-xs text-brand-muted">{r.time}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+        {/* The scheduler's answer, with its reason. A student told to practise
+            a concept is owed the reason it was chosen. */}
+        <div className="card p-6">
+          <h2 className="font-semibold mb-1">Practise next</h2>
+          <p className="text-xs text-brand-muted mb-4">
+            Chosen from your own record, weakest concept first.
+          </p>
+          {next.length === 0 ? (
+            <p className="text-sm text-brand-muted">
+              Finish a case and this fills in with the concepts you find hardest.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {next.map((c) => (
+                <li key={c.concept} className="flex items-start gap-3">
+                  <span className="w-6 h-6 shrink-0 rounded-full bg-brand-primary/20 text-brand-accent grid place-items-center text-[11px] font-semibold">
+                    {c.step}
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{c.label}</p>
+                    <p className="text-xs text-brand-muted">{c.reason}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            onClick={() => navigate("/student/progress")}
+            className="btn-ghost w-full mt-5 text-sm"
+          >
+            See full progress
+          </button>
+        </div>
+      </div>
+
+      <div className="card p-6 mt-6">
+        <h2 className="font-semibold mb-4">Recent activity</h2>
+        {recent.length === 0 ? (
+          <p className="text-sm text-brand-muted">
+            Nothing yet. Your sessions appear here as you work through cases.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {recent.map((s) => (
+              <li key={s.sessionId} className="flex items-start gap-3 text-sm">
+                <span aria-hidden="true">
+                  {s.state === "CASE_COMPLETE" ? "✅" : "▶"}
+                </span>
+                <div className="flex-1">
+                  <p>
+                    {s.state === "CASE_COMPLETE"
+                      ? `Finished recording ${s.sourceEcgId ?? s.caseId}`
+                      : `Started recording ${s.sourceEcgId ?? s.caseId}`}
+                    {s.scorePct !== null && s.state === "CASE_COMPLETE" && (
+                      <span className="text-brand-muted"> — {s.scorePct}% over {s.stepsMarked} marked steps</span>
+                    )}
+                  </p>
+                  <p className="text-xs text-brand-muted">
+                    {timeAgo(s.completedAt || s.startedAt)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </Layout>
   );
 }

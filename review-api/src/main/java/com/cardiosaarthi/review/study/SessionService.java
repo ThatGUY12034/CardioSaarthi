@@ -47,14 +47,16 @@ public class SessionService {
     private final GradingService grading;
     private final FeedbackLibrary feedback;
     private final ObjectMapper mapper;
+    private final MasteryService mastery;
 
     SessionService(JdbcClient db, StepRepository steps, GradingService grading,
-                   FeedbackLibrary feedback, ObjectMapper mapper) {
+                   FeedbackLibrary feedback, ObjectMapper mapper, MasteryService mastery) {
         this.db = db;
         this.steps = steps;
         this.grading = grading;
         this.feedback = feedback;
         this.mapper = mapper;
+        this.mastery = mastery;
     }
 
     // -----------------------------------------------------------------------
@@ -391,6 +393,11 @@ public class SessionService {
                 .param("interpretation", finalInterpretation)
                 .param("id", sessionId)
                 .update();
+
+        // The concept record is folded in here rather than after each step: SM-2
+        // schedules a review of an item, and the item is the concept as met in
+        // one case. Answering the rate step twice is one encounter with rate.
+        mastery.recordSession(sessionId, studentId);
 
         log.info("session {} completed by student {}", sessionId, studentId);
         return summary(sessionId);

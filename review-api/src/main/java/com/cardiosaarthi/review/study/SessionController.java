@@ -39,11 +39,14 @@ public class SessionController {
     private final SessionService sessions;
     private final StepRepository steps;
     private final JdbcClient db;
+    private final CurrentStudent currentStudent;
 
-    SessionController(SessionService sessions, StepRepository steps, JdbcClient db) {
+    SessionController(SessionService sessions, StepRepository steps, JdbcClient db,
+                      CurrentStudent currentStudent) {
         this.sessions = sessions;
         this.steps = steps;
         this.db = db;
+        this.currentStudent = currentStudent;
     }
 
     public record StartRequest(
@@ -193,29 +196,8 @@ public class SessionController {
         }
     }
 
-    /**
-     * The student making this request.
-     *
-     * <p>Resolved from the token or from the Basic principal's email, never from
-     * the request body.
-     */
+    /** Delegated, so a second controller can resolve the caller the same way. */
     private long currentStudentId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            throw new IllegalStateException("no authenticated student on this request");
-        }
-        if (authentication instanceof JwtAuthenticationToken token) {
-            Long id = token.getToken().getClaim("uid");
-            if (id == null) {
-                throw new IllegalStateException("token carries no uid claim");
-            }
-            return id;
-        }
-        return db.sql("SELECT id FROM students WHERE lower(email) = lower(:email) AND active")
-                .param("email", authentication.getName())
-                .query(Long.class)
-                .optional()
-                .orElseThrow(() -> new NotFoundException(
-                        "authenticated as " + authentication.getName() + " but no student row exists"));
+        return currentStudent.id();
     }
 }

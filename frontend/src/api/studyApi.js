@@ -26,6 +26,41 @@ export async function getCaseBrief(caseId) {
   return response.status === 204 ? null : response.data;
 }
 
+/**
+ * This student's own record: counts, average, streak, cases available.
+ *
+ * <p>Every figure is derived from the attempt record. The pages that show them
+ * previously held constants.
+ */
+export async function getProgress() {
+  const { data } = await axiosClient.get("/study/progress");
+  return data;
+}
+
+/** Per-concept strength across the nine steps, weakest visible first. */
+export async function getConceptStrength() {
+  const { data } = await axiosClient.get("/study/progress/concepts");
+  return data;
+}
+
+/** What the scheduler says to practise next, with the reason attached. */
+export async function getNextConcepts(limit = 3) {
+  const { data } = await axiosClient.get("/study/progress/next", { params: { limit } });
+  return data;
+}
+
+/** Recent sessions with their scores, newest first. */
+export async function getRecentSessions(limit = 10) {
+  const { data } = await axiosClient.get("/study/progress/sessions", { params: { limit } });
+  return data;
+}
+
+/** Positions without names: a ranking that identifies the bottom is a disclosure. */
+export async function getLeaderboard(limit = 10) {
+  const { data } = await axiosClient.get("/study/progress/leaderboard", { params: { limit } });
+  return data;
+}
+
 /** The nine steps, and what each accepts. Served so the form cannot drift. */
 export async function getSteps() {
   const { data } = await axiosClient.get("/study/steps");
