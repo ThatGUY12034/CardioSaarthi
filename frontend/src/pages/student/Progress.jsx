@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Layout from "../../components/Layout";
+import RemarksPanel from "../../components/RemarksPanel";
 import StatCard from "../../components/StatCard";
 import { EmptyState, ErrorState, SkeletonCard } from "../../components/States";
 import {
@@ -107,6 +108,8 @@ export default function Progress() {
               color="brand-warning"
             />
           </div>
+
+          <RemarksPanel limit={10} />
 
           <div className="grid lg:grid-cols-2 gap-6 mt-8">
             {/* Per-concept strength. The nine steps, worst first where known. */}

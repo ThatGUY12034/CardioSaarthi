@@ -61,6 +61,22 @@ export async function getLeaderboard(limit = 10) {
   return data;
 }
 
+/**
+ * Remarks a teacher left on this student's attempts, unread first.
+ *
+ * <p>A remark cannot be edited once sent; marking it read is the one change
+ * permitted, and a database trigger enforces the rest.
+ */
+export async function getRemarks(limit = 20) {
+  const { data } = await axiosClient.get("/study/remarks", { params: { limit } });
+  return data;
+}
+
+/** Opening a remark marks it read. */
+export async function markRemarkRead(id) {
+  await axiosClient.post(`/study/remarks/${id}/read`);
+}
+
 /** The nine steps, and what each accepts. Served so the form cannot drift. */
 export async function getSteps() {
   const { data } = await axiosClient.get("/study/steps");

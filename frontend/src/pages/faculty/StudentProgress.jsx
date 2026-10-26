@@ -1,228 +1,299 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Layout from "../../components/Layout";
-import CaseEcg from "../../components/CaseEcg";
+import EcgImage from "../../components/EcgImage";
+import { EmptyState, ErrorState, InlineError, SkeletonCard } from "../../components/States";
+import { addRemark, getStudent } from "../../api/cohortApi";
+import { errorMessage } from "../../api/studyApi";
 
 /**
- * One student's completed cases, read like a book.
+ * One student's work, and the place a teacher answers it.
  *
- * <p>Two facing pages per case: the recording on the left, what the platform
- * computed on the right. The pairing is the point -- a reviewer looking at a
- * student's score should see the trace that score was earned against, not a
- * number on its own.
- *
- * <p>The cases here are illustrative, like the cohort table that leads to this
- * page, and the interface says so. The nine parameters are laid out in the
- * order of the interpretation sequence, which is the order the student answered
- * them in.
+ * <p>Every mistake is shown with the named error, what the student said and
+ * what the recording showed, so a teacher can see what happened without opening
+ * the case. A remark is left on the attempt itself rather than on the student,
+ * because advice about a specific trace is advice somebody can act on.
  */
 
-const STUDENTS = {
-  1: { name: "Aarav Patel", collegeId: "TE23CS001", avg: 92, streak: 7, band: "High" },
-  2: { name: "Sneha Iyer", collegeId: "TE23CS015", avg: 88, streak: 5, band: "High" },
-  3: { name: "Rohan Shah", collegeId: "TE23CS022", avg: 85, streak: 4, band: "High" },
-  4: { name: "Isha Desai", collegeId: "TE23CS034", avg: 87, streak: 6, band: "High" },
-  5: { name: "Vivaan Kulkarni", collegeId: "TE23CS008", avg: 90, streak: 8, band: "High" },
-  6: { name: "Aditya Nair", collegeId: "TE23CS041", avg: 78, streak: 3, band: "Medium" },
-  7: { name: "Meera Joshi", collegeId: "TE23CS047", avg: 75, streak: 2, band: "Medium" },
-  8: { name: "Riya Deshmukh", collegeId: "TE23CS012", avg: 74, streak: 3, band: "Medium" },
-  9: { name: "Arjun Pillai", collegeId: "TE23CS029", avg: 72, streak: 2, band: "Medium" },
-  10: { name: "Nikita Rane", collegeId: "TE23CS036", avg: 71, streak: 4, band: "Medium" },
-  11: { name: "Sahil Qureshi", collegeId: "TE23CS044", avg: 70, streak: 1, band: "Medium" },
-  12: { name: "Tanvi Bhosale", collegeId: "TE23CS019", avg: 68, streak: 2, band: "Medium" },
-  13: { name: "Omkar Sawant", collegeId: "TE23CS051", avg: 66, streak: 1, band: "Medium" },
-  14: { name: "Kabir Menon", collegeId: "TE23CS052", avg: 58, streak: 1, band: "Low" },
-  15: { name: "Ananya Rao", collegeId: "TE23CS060", avg: 54, streak: 0, band: "Low" },
-  16: { name: "Zoya Shaikh", collegeId: "TE23CS063", avg: 51, streak: 0, band: "Low" },
-  17: { name: "Harsh Gupta", collegeId: "TE23CS068", avg: 47, streak: 1, band: "Low" },
-};
+const accuracyTone = (pct) =>
+  pct === null || pct === undefined
+    ? "bg-white/10"
+    : pct >= 80
+      ? "bg-brand-success"
+      : pct >= 60
+        ? "bg-brand-warning"
+        : "bg-brand-danger";
 
-const CASES = [
-  {
-    number: 3,
-    title: "Atrial Fibrillation",
-    score: 85,
-    findings: [
-      ["Heart Rate", "120 bpm (Irregular)"],
-      ["Rhythm", "Irregularly irregular"],
-      ["P Waves", "Absent"],
-      ["QRS", "Narrow"],
-      ["ST Segment", "Normal"],
-      ["T Waves", "Normal"],
-    ],
-  },
-  {
-    number: 4,
-    title: "Sinus Bradycardia",
-    score: 92,
-    findings: [
-      ["Heart Rate", "48 bpm"],
-      ["Rhythm", "Regular"],
-      ["P Waves", "Present, one per QRS"],
-      ["QRS", "Narrow"],
-      ["ST Segment", "Normal"],
-      ["T Waves", "Upright"],
-    ],
-  },
-  {
-    number: 5,
-    title: "First-degree AV block",
-    score: 78,
-    findings: [
-      ["Heart Rate", "72 bpm"],
-      ["Rhythm", "Regular"],
-      ["PR Interval", "248 ms (prolonged)"],
-      ["QRS", "Narrow"],
-      ["ST Segment", "Normal"],
-      ["T Waves", "Upright"],
-    ],
-  },
-];
+/** Answers are stored as the structured value the grader received. */
+function readAnswer(raw) {
+  if (!raw) return "—";
+  try {
+    const a = JSON.parse(raw);
+    if (a.notPresent) return "not measurable";
+    if (a.value !== null && a.value !== undefined) return String(a.value);
+    if (a.category) return String(a.category).toLowerCase().replace(/_/g, " ");
+    if (Array.isArray(a.leads) && a.leads.length) return a.leads.join(", ");
+    if (Array.isArray(a.leads)) return "no leads";
+    return "—";
+  } catch {
+    return String(raw);
+  }
+}
 
-const BAND_STYLE = {
-  High: "bg-brand-success/20 text-brand-success",
-  Medium: "bg-brand-warning/20 text-brand-warning",
-  Low: "bg-brand-danger/20 text-brand-danger",
-};
+function readExpected(raw) {
+  if (!raw) return "—";
+  try {
+    const value = JSON.parse(raw);
+    if (Array.isArray(value)) return value.length ? value.join(", ") : "none";
+    return String(value).replace(/^"|"$/g, "").toLowerCase().replace(/_/g, " ");
+  } catch {
+    return String(raw);
+  }
+}
+
+function RemarkBox({ mistake, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const save = async () => {
+    if (!body.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await addRemark(mistake.sessionStepId, body.trim());
+      setBody("");
+      setOpen(false);
+      onSaved();
+    } catch (e) {
+      setError(errorMessage(e, "That remark was not saved."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="btn-ghost text-xs !py-1.5 !px-3 mt-3">
+        {mistake.remarkCount > 0
+          ? `Add another remark (${mistake.remarkCount})`
+          : "Leave a remark"}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3">
+      <label className="sr-only" htmlFor={`remark-${mistake.sessionStepId}`}>
+        Your remark on this attempt
+      </label>
+      <textarea
+        id={`remark-${mistake.sessionStepId}`}
+        rows={3}
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+        maxLength={2000}
+        placeholder="What should they do differently on this trace?"
+        className="w-full bg-brand-bg2 border border-white/10 rounded-lg px-3 py-2 text-sm"
+      />
+      {error && <div className="mt-2"><InlineError message={error} /></div>}
+      <div className="flex gap-2 mt-2">
+        <button onClick={save} disabled={busy || !body.trim()} className="btn-primary text-xs !py-1.5 !px-3">
+          {busy ? "Saving…" : "Send to student"}
+        </button>
+        <button onClick={() => setOpen(false)} className="btn-ghost text-xs !py-1.5 !px-3">
+          Cancel
+        </button>
+      </div>
+      <p className="text-[11px] text-brand-muted mt-2">
+        A remark cannot be edited once sent. It is a record of what was said.
+      </p>
+    </div>
+  );
+}
 
 export default function StudentProgress() {
   const { id } = useParams();
-  const student = STUDENTS[id] || STUDENTS[1];
-  const [page, setPage] = useState(0);
-  const current = CASES[page];
+  const [detail, setDetail] = useState(null);
+  const [error, setError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const scoreTone =
-    current.score >= 85
-      ? "text-brand-success"
-      : current.score >= 70
-        ? "text-brand-warning"
-        : "text-brand-danger";
+  useEffect(() => {
+    let cancelled = false;
+    getStudent(id)
+      .then((data) => {
+        if (!cancelled) setDetail(data);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(errorMessage(e, "Could not load this student."));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, reloadKey]);
+
+  if (error) {
+    return (
+      <Layout role="FACULTY">
+        <Link to="/faculty/students" className="text-sm text-brand-accent hover:underline">
+          ← Back to students
+        </Link>
+        <div className="mt-8">
+          <ErrorState message={error} onRetry={() => setReloadKey((n) => n + 1)} />
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!detail) {
+    return (
+      <Layout role="FACULTY">
+        <div className="space-y-4 mt-4">
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={4} />
+        </div>
+      </Layout>
+    );
+  }
+
+  const s = detail.student;
 
   return (
     <Layout role="FACULTY">
       <Link to="/faculty/students" className="text-sm text-brand-accent hover:underline">
-        ← Back to Students
+        ← Back to students
       </Link>
 
-      <h1 className="text-3xl font-bold mt-3">Student Progress</h1>
+      <h1 className="page-title mt-3">{s.fullName}</h1>
+      <p className="page-subtitle">
+        {s.collegeId}
+        {s.cohort ? ` · ${s.cohort}` : ""}
+      </p>
 
-      <div className="card p-5 mt-6 flex flex-wrap items-center gap-4">
-        <span
-          className={`w-12 h-12 rounded-full grid place-items-center font-semibold ${BAND_STYLE[student.band]}`}
-          aria-hidden="true"
-        >
-          {student.name
-            .split(" ")
-            .map((part) => part[0])
-            .slice(0, 2)
-            .join("")}
-        </span>
-        <div className="flex-1 min-w-[200px]">
-          <h2 className="font-semibold text-lg">{student.name}</h2>
-          <p className="text-sm text-brand-muted">
-            {student.collegeId} · Terna Engineering College
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mt-6">
+        <div className="card p-4">
+          <p className="text-xs text-brand-muted">Cases completed</p>
+          <p className="text-2xl font-bold tabular mt-1">{s.casesCompleted}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-brand-muted">Average score</p>
+          <p className="text-2xl font-bold tabular mt-1">
+            {s.averageScorePct === null ? "—" : `${s.averageScorePct}%`}
           </p>
         </div>
-        <span className={`text-xs px-3 py-1 rounded-full ${BAND_STYLE[student.band]}`}>
-          {student.band} performance
-        </span>
-        <div className="flex gap-6 text-sm">
-          <span>
-            <span className="block text-xs text-brand-muted">Avg. score</span>
-            <strong>{student.avg}%</strong>
-          </span>
-          <span>
-            <span className="block text-xs text-brand-muted">Streak</span>
-            <strong>{student.streak} days</strong>
-          </span>
+        <div className="card p-4">
+          <p className="text-xs text-brand-muted">Mistakes recorded</p>
+          <p className="text-2xl font-bold tabular mt-1">{s.mistakes}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-brand-muted">Learning gain</p>
+          {s.learningGainPct === null ? (
+            <p className="text-sm text-brand-muted mt-2">Needs four cases</p>
+          ) : (
+            <p
+              className={`text-2xl font-bold tabular mt-1 ${
+                s.learningGainPct > 0 ? "text-brand-success" : "text-brand-danger"
+              }`}
+            >
+              {s.learningGainPct > 0 ? "+" : ""}
+              {s.learningGainPct}%
+            </p>
+          )}
         </div>
       </div>
 
-      {/* The spread. One border down the middle is the whole illusion. */}
-      <div className="card mt-6 overflow-hidden">
-        <div className="grid md:grid-cols-2 md:divide-x divide-white/10">
-          <div className="p-6">
-            <p className="text-xs text-brand-muted uppercase tracking-wide">
-              Case {current.number}
-            </p>
-            <h3 className="font-semibold text-lg mt-1">{current.title}</h3>
+      {detail.earlyAccuracyPct !== null && (
+        <p className="text-xs text-brand-muted mt-3">
+          First-attempt accuracy went from {detail.earlyAccuracyPct}% across their earlier
+          cases to {detail.lateAccuracyPct}% across their later ones.
+        </p>
+      )}
 
-            <div className="mt-4">
-              <CaseEcg height={200} label={`Recording reviewed in case ${current.number}`} />
-            </div>
-
-            <div className="flex items-end justify-between mt-5">
-              <span>
-                <span className="block text-xs text-brand-muted">Their score</span>
-                <strong className={`text-3xl ${scoreTone}`}>{current.score}%</strong>
-              </span>
-              <button type="button" className="btn-ghost text-sm">
-                View details
-              </button>
-            </div>
-          </div>
-
-          <div className="p-6">
-            <h3 className="font-semibold text-lg">Case analysis</h3>
-            <p className="text-sm text-brand-muted mt-1">
-              What the platform computed from the recording.
-            </p>
-
-            <dl className="mt-5 space-y-3">
-              {current.findings.map(([name, value]) => (
+      <div className="card p-6 mt-6">
+        <h2 className="font-semibold">Strength by concept</h2>
+        <p className="text-xs text-brand-muted mt-1">
+          Correct on the first attempt. The same figure the student sees.
+        </p>
+        <ul className="mt-5 space-y-3">
+          {detail.concepts.map((c) => (
+            <li key={c.step}>
+              <div className="flex items-baseline justify-between text-sm">
+                <span>
+                  <span className="text-brand-muted mr-2">{c.step}.</span>
+                  {c.label}
+                </span>
+                <span className="tabular text-brand-muted">
+                  {c.firstAttemptAccuracyPct === null
+                    ? "not practised"
+                    : `${c.firstAttemptAccuracyPct}% (${c.firstAttemptCorrect}/${c.firstAttempts})`}
+                </span>
+              </div>
+              <div className="h-2 bg-white/5 rounded mt-1.5 overflow-hidden">
                 <div
-                  key={name}
-                  className="flex items-baseline justify-between gap-4 border-b border-white/5 pb-3"
-                >
-                  <dt className="text-sm text-brand-muted">{name}</dt>
-                  <dd className="text-sm font-medium text-right">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between px-6 py-4 border-t border-white/5">
-          <button
-            type="button"
-            onClick={() => setPage((n) => Math.max(0, n - 1))}
-            disabled={page === 0}
-            className="btn-ghost text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            ← Previous
-          </button>
-
-          <div className="flex gap-2" role="tablist" aria-label="Cases">
-            {CASES.map((item, index) => (
-              <button
-                key={item.number}
-                type="button"
-                role="tab"
-                aria-selected={index === page}
-                aria-label={`Case ${item.number}`}
-                onClick={() => setPage(index)}
-                className={`w-2 h-2 rounded-full transition ${
-                  index === page ? "bg-brand-primary w-6" : "bg-white/20 hover:bg-white/40"
-                }`}
-              />
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setPage((n) => Math.min(CASES.length - 1, n + 1))}
-            disabled={page === CASES.length - 1}
-            className="btn-ghost text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Next →
-          </button>
-        </div>
+                  className={`h-full rounded ${accuracyTone(c.firstAttemptAccuracyPct)}`}
+                  style={{ width: `${c.firstAttemptAccuracyPct ?? 0}%` }}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
 
-      <p className="text-xs text-brand-muted mt-4">
-        Sample cases, shown to demonstrate the layout. Real entries appear here once
-        students complete sessions against approved cases.
+      <h2 className="font-semibold mt-8">Where it went wrong</h2>
+      <p className="text-xs text-brand-muted mt-1">
+        Most recent first. Leave a remark on any of these and the student sees it on their
+        own pages.
       </p>
+
+      {detail.mistakes.length === 0 ? (
+        <EmptyState
+          className="mt-4"
+          icon={"✓"}
+          title="No mistakes recorded"
+          description="This student has not answered a step incorrectly yet."
+        />
+      ) : (
+        <div className="space-y-4 mt-4">
+          {detail.mistakes.map((m) => (
+            <article key={m.sessionStepId} className="card p-5">
+              <div className="grid md:grid-cols-[160px_1fr] gap-5">
+                <div>
+                  <EcgImage caseId={m.caseId} kind="clean" height={100} zoomable={false} />
+                  <p className="text-[11px] text-brand-muted mt-2">
+                    Recording {m.sourceEcgId ?? m.caseId}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                    <h3 className="font-semibold text-sm">
+                      <span className="text-brand-muted mr-2">Step {m.step}</span>
+                      {m.stepLabel}
+                    </h3>
+                    <span className="text-[11px] text-brand-muted">
+                      attempt {m.attempt}
+                    </span>
+                  </div>
+
+                  <p className="text-sm mt-2">
+                    <span className="text-brand-danger">Said {readAnswer(m.answer)}</span>
+                    <span className="text-brand-muted"> · recording showed </span>
+                    <span className="text-brand-success">{readExpected(m.expected)}</span>
+                  </p>
+
+                  {m.errorDescription && (
+                    <p className="text-sm text-brand-muted mt-2 leading-relaxed">
+                      {m.errorDescription}
+                    </p>
+                  )}
+
+                  <RemarkBox mistake={m} onSaved={() => setReloadKey((n) => n + 1)} />
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </Layout>
   );
 }

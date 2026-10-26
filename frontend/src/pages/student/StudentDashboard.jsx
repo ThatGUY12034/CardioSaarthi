@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout";
+import RemarksPanel from "../../components/RemarksPanel";
 import StatCard from "../../components/StatCard";
 import CaseEcg from "../../components/CaseEcg";
 import { SkeletonCard } from "../../components/States";
@@ -178,6 +179,10 @@ export default function StudentDashboard() {
           </button>
         </div>
       </div>
+
+      {/* What a teacher said, before what the student did: a remark they have
+          not read is the only thing here that can still change the next case. */}
+      <RemarksPanel limit={6} />
 
       <div className="card p-6 mt-6">
         <h2 className="font-semibold mb-4">Recent activity</h2>
