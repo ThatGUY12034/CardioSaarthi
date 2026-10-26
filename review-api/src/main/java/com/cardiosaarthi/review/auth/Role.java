@@ -3,10 +3,10 @@ package com.cardiosaarthi.review.auth;
 /**
  * Who someone is, from the console's point of view.
  *
- * <p>PATIENT is listed because the console has a patient area and Layer 4 of the
- * brief specifies one. Nothing implements it yet, and login for that role is
- * refused with a message saying so rather than quietly failing as bad
- * credentials -- a person told "wrong password" will keep trying.
+ * <p>All four are implemented. PATIENT was refused outright until Layer 4 had a
+ * backend, with a message saying so rather than a quiet credential failure --
+ * a person told "wrong password" for an account that could never work will keep
+ * trying.
  */
 public enum Role {
     STUDENT,
@@ -19,7 +19,7 @@ public enum Role {
     }
 
     public boolean isImplemented() {
-        return this != PATIENT;
+        return true;
     }
 
     /** The value stored in reviewers.role. */

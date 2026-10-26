@@ -216,16 +216,17 @@ class AuthIntegrationTests {
     }
 
     @Test
-    @DisplayName("an unbuilt role says so rather than pretending the password is wrong")
-    void patientRoleIsNotImplemented() throws Exception {
-        // Someone told "wrong password" for an account that could never work
-        // will simply keep trying.
+    @DisplayName("the patient role is built, so an unknown patient is simply unauthorised")
+    void patientRoleIsImplemented() throws Exception {
+        // This used to answer 501 and say the area was not built, which was the
+        // honest reply while nothing stood behind it: a person told "wrong
+        // password" for an account that could never work will keep trying.
+        // Layer 4 exists now, so an unknown patient is an ordinary failed login
+        // and must be indistinguishable from a wrong password.
         mvc.perform(post("/api/auth/login/patient")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"someone@example.invalid\",\"password\":\"x\",\"mode\":\"email\"}"))
-                .andExpect(status().isNotImplemented())
-                .andExpect(jsonPath("$.message").value(
-                        org.hamcrest.Matchers.containsString("not built yet")));
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

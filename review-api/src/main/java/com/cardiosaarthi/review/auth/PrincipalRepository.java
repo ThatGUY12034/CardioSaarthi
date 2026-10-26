@@ -34,6 +34,9 @@ public class PrincipalRepository {
         if (role == Role.STUDENT) {
             return findStudent(identifier, byCollegeId);
         }
+        if (role == Role.PATIENT) {
+            return findPatient(identifier, byCollegeId);
+        }
         return findReviewer(role, identifier, byCollegeId);
     }
 
@@ -52,6 +55,33 @@ public class PrincipalRepository {
                                 rs.getString("email"),
                                 rs.getString("college_id"),
                                 Role.STUDENT),
+                        rs.getString("password_hash"),
+                        rs.getBoolean("active")))
+                .optional();
+    }
+
+    /**
+     * Patients are their own population, not a role on a student.
+     *
+     * <p>A patient's identifier is the reference printed on the report they
+     * were handed, which stands where a college ID does for a student: the
+     * number they actually have in front of them.
+     */
+    private Optional<Candidate> findPatient(String identifier, boolean byRef) {
+        String column = byRef ? "patient_ref" : "email";
+        return db.sql("""
+                SELECT id, full_name, email, patient_ref, password_hash, active
+                FROM patients
+                WHERE lower(%s) = lower(:identifier)
+                """.formatted(column))
+                .param("identifier", identifier)
+                .query((rs, n) -> new Candidate(
+                        new Principal(
+                                rs.getLong("id"),
+                                rs.getString("full_name"),
+                                rs.getString("email"),
+                                rs.getString("patient_ref"),
+                                Role.PATIENT),
                         rs.getString("password_hash"),
                         rs.getBoolean("active")))
                 .optional();
@@ -111,6 +141,14 @@ public class PrincipalRepository {
 
     /** Re-read on every request, so revoking access takes effect at once. */
     public Optional<Principal> byId(Role role, long id) {
+        if (role == Role.PATIENT) {
+            return db.sql("SELECT id, full_name, email, patient_ref FROM patients WHERE id = :id AND active")
+                    .param("id", id)
+                    .query((rs, n) -> new Principal(
+                            rs.getLong("id"), rs.getString("full_name"), rs.getString("email"),
+                            rs.getString("patient_ref"), Role.PATIENT))
+                    .optional();
+        }
         if (role == Role.STUDENT) {
             return db.sql("SELECT id, full_name, email, college_id FROM students WHERE id = :id AND active")
                     .param("id", id)

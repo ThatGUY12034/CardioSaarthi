@@ -171,21 +171,26 @@ public class TutorService {
     // -----------------------------------------------------------------------
     // the corpus, for faculty
     // -----------------------------------------------------------------------
-    public record CorpusStatus(int pending, int approved, int rejected, int sources) {
+    public record CorpusStatus(int total, int pending, int approved, int rejected,
+                               int approvedByClinician, int sources) {
     }
 
+    /**
+     * How full the library is, and how much of it a person actually read.
+     *
+     * <p>approvedByClinician is reported separately because a seeded approval is
+     * a fixture, not a decision, and the two must never be added together.
+     */
     public CorpusStatus status() {
         return db.sql("""
-                SELECT
-                    count(*) FILTER (WHERE review_status = 'pending')  AS pending,
-                    count(*) FILTER (WHERE review_status = 'approved') AS approved,
-                    count(*) FILTER (WHERE review_status = 'rejected') AS rejected,
-                    (SELECT count(*) FROM knowledge_sources)           AS sources
-                FROM knowledge_chunks
+                SELECT p.total, p.pending, p.approved, p.rejected, p.approved_by_clinician,
+                       (SELECT count(*) FROM knowledge_sources) AS sources
+                FROM v_knowledge_provenance p
                 """)
                 .query((rs, n) -> new CorpusStatus(
-                        rs.getInt("pending"), rs.getInt("approved"),
-                        rs.getInt("rejected"), rs.getInt("sources")))
+                        rs.getInt("total"), rs.getInt("pending"), rs.getInt("approved"),
+                        rs.getInt("rejected"), rs.getInt("approved_by_clinician"),
+                        rs.getInt("sources")))
                 .single();
     }
 }

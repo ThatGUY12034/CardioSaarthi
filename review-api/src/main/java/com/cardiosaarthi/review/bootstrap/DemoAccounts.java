@@ -77,10 +77,36 @@ public class DemoAccounts implements ApplicationRunner {
                 .param("hash", hash)
                 .update();
 
+        db.sql("""
+                INSERT INTO patients (email, full_name, patient_ref, password_hash)
+                VALUES ('demo.patient@example.invalid', 'Demo Patient', 'PT/1234', :hash)
+                ON CONFLICT (lower(email)) DO UPDATE SET
+                    patient_ref = excluded.patient_ref,
+                    password_hash = excluded.password_hash,
+                    active = true
+                """)
+                .param("hash", hash)
+                .update();
+
+        // A report to read. Issued against the first approved case, because an
+        // unapproved one cannot be issued at all -- a trigger refuses it, for
+        // the same reason an unreviewed case cannot reach a student.
+        db.sql("""
+                INSERT INTO patient_reports (patient_id, case_id, issued_on)
+                SELECT p.id, c.id, current_date
+                FROM patients p
+                CROSS JOIN LATERAL (
+                    SELECT id FROM cases WHERE review_status = 'approved' ORDER BY id LIMIT 1
+                ) c
+                WHERE p.email = 'demo.patient@example.invalid'
+                ON CONFLICT (patient_id, case_id) DO NOTHING
+                """)
+                .update();
+
         // Deliberately loud. An instance running with these enabled and reachable
         // from anywhere but this machine is a problem, and the log is where
         // somebody notices.
-        log.warn("DEMO ACCOUNTS ENABLED: faculty TE/1234 and student TE/4321, "
+        log.warn("DEMO ACCOUNTS ENABLED: faculty TE/1234, student TE/4321 and patient PT/1234, "
                 + "both with a four-digit password. Disable CARDIO_DEMO_ACCOUNTS "
                 + "anywhere this service is not bound to localhost.");
     }

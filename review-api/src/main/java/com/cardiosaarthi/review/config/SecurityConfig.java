@@ -21,6 +21,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -48,6 +49,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * transit.
  */
 @Configuration
+// Without this, every @PreAuthorize in the codebase is a comment: the
+// annotations parse, Spring ignores them, and the endpoints they claim to
+// guard are open to any authenticated caller.
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
@@ -70,6 +75,17 @@ public class SecurityConfig {
                         // here rather than checked in the controller so the rule
                         // holds identically for a bearer token and for Basic.
                         .requestMatchers("/api/reviewers", "/api/reviewers/**").hasRole("ADMIN")
+                        // A patient's report is the most private data here, and
+                        // the only population that must never reach it is the
+                        // one with the most accounts. Declared at the filter
+                        // chain as well as on the controller: the annotation
+                        // depends on method security being switched on, and
+                        // this does not.
+                        .requestMatchers("/api/patient/**").hasRole("PATIENT")
+                        // The corpus queue decides what a tutor may say. A
+                        // student approving their own reading material defeats
+                        // the point of the gate.
+                        .requestMatchers("/api/knowledge/**").hasAnyRole("FACULTY", "ADMIN")
                         // Everything else, the waveform images included. These
                         // are real patient recordings: de-identified, but not
                         // ours to leave open.
