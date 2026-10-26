@@ -24,8 +24,9 @@ const patientLinks = [
 
 const adminLinks = [
   { to: "/admin/dashboard", label: "Dashboard", icon: "◈" },
-  { to: "/admin/users", label: "Users", icon: "◇" },
-  { to: "/admin/cases", label: "Cases", icon: "◇" },
+  { to: "/admin/users", label: "Accounts", icon: "◇" },
+  { to: "/admin/cases", label: "Case Bank", icon: "◇" },
+  { to: "/faculty/library", label: "Reference Library", icon: "◇" },
 ];
 
 const linkMap = {

@@ -75,6 +75,9 @@ public class SecurityConfig {
                         // here rather than checked in the controller so the rule
                         // holds identically for a bearer token and for Basic.
                         .requestMatchers("/api/reviewers", "/api/reviewers/**").hasRole("ADMIN")
+                        // Running the installation: account lists across all
+                        // three populations, and revoking access.
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // A patient's report is the most private data here, and
                         // the only population that must never reach it is the
                         // one with the most accounts. Declared at the filter

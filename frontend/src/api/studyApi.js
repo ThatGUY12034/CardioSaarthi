@@ -106,5 +106,24 @@ export async function getSummary(sessionId) {
 }
 
 export function errorMessage(error, fallback = "Something went wrong.") {
-  return error?.response?.data?.message || error?.message || fallback;
+  // The server's own message first: it is written for a person and says what
+  // was actually refused.
+  const fromServer = error?.response?.data?.message;
+  if (fromServer) return fromServer;
+
+  // Then the statuses the server answers without a body. Axios turns these
+  // into "Request failed with status code 401", which tells a user nothing and
+  // reads like a leaked stack trace.
+  const status = error?.response?.status;
+  if (status === 401) return "You are not signed in, or your session has ended. Sign in again.";
+  if (status === 403) return "Your account does not have access to this.";
+  if (status === 404) return "That is not here.";
+  if (status === 409) return "Someone else changed this first. Reload and try again.";
+  if (status >= 500) return "The server could not complete that. Try again in a moment.";
+
+  // No response at all: the request never arrived.
+  if (error?.code === "ERR_NETWORK") {
+    return "The server could not be reached. Check that it is running.";
+  }
+  return fallback;
 }

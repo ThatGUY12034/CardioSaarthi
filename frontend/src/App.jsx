@@ -45,7 +45,7 @@ export default function App() {
       </Route>
 
       {/* Faculty */}
-      <Route element={<ProtectedRoute allowedRoles={["FACULTY"]} />}>
+      <Route element={<ProtectedRoute allowedRoles={["FACULTY", "ADMIN"]} />}>
         <Route path="/faculty/dashboard" element={<FacultyDashboard />} />
         <Route path="/faculty/students" element={<StudentPerformance />} />
         <Route path="/faculty/students/:id" element={<StudentProgress />} />

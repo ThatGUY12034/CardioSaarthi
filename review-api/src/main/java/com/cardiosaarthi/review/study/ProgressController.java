@@ -5,6 +5,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
+
+import com.cardiosaarthi.review.support.Timestamps;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -59,8 +61,8 @@ public class ProgressController {
                         rs.getInt("cases_available"),
                         rs.getInt("cases_completed"),
                         rs.getInt("cases_in_progress"),
-                        (Integer) rs.getObject("average_score_pct"),
-                        (Integer) rs.getObject("best_score_pct"),
+                        Timestamps.integer(rs, "average_score_pct"),
+                        Timestamps.integer(rs, "best_score_pct"),
                         rs.getInt("current_streak_days")))
                 .optional()
                 // A student who has never started a case has no row in the view,
@@ -105,7 +107,7 @@ public class ProgressController {
                         rs.getInt("first_attempt_correct"),
                         rs.getObject("first_attempt_accuracy_pct") == null
                                 ? null : rs.getDouble("first_attempt_accuracy_pct"),
-                        rs.getObject("last_practised_at", Instant.class)))
+                        Timestamps.instant(rs, "last_practised_at")))
                 .list();
     }
 
@@ -150,13 +152,13 @@ public class ProgressController {
                 .query((rs, n) -> new RecentSession(
                         rs.getLong("session_id"),
                         rs.getLong("case_id"),
-                        (Integer) rs.getObject("source_ecg_id"),
+                        Timestamps.integer(rs, "source_ecg_id"),
                         rs.getString("mode"),
                         rs.getString("state"),
-                        (Integer) rs.getObject("score_pct"),
+                        Timestamps.integer(rs, "score_pct"),
                         rs.getInt("steps_marked"),
-                        rs.getObject("started_at", Instant.class),
-                        rs.getObject("completed_at", Instant.class)))
+                        Timestamps.instant(rs, "started_at"),
+                        Timestamps.instant(rs, "completed_at")))
                 .list();
     }
 
@@ -192,7 +194,7 @@ public class ProgressController {
                         rs.getInt("position"),
                         rs.getLong("student_id") == studentId,
                         rs.getInt("cases_completed"),
-                        (Integer) rs.getObject("average_score_pct"),
+                        Timestamps.integer(rs, "average_score_pct"),
                         rs.getInt("current_streak_days")))
                 .list();
     }
