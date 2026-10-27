@@ -26,7 +26,22 @@ const axiosClient = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+/**
+ * Exchanging credentials is the one request that must not carry a token.
+ *
+ * <p>Attaching the old one locks the user out: the resource-server filter
+ * validates any bearer token it is given before the controller runs, so a
+ * stale or demo token makes the login itself 401 and the only way back in is
+ * to clear browser storage by hand. A session that has expired, or a browser
+ * that once visited demo mode, could not sign in at all.
+ */
+const CARRIES_NO_TOKEN = /\/auth\/login\//;
+
 axiosClient.interceptors.request.use((config) => {
+  if (CARRIES_NO_TOKEN.test(config.url || "")) {
+    delete config.headers.Authorization;
+    return config;
+  }
   const token = localStorage.getItem("cs_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
