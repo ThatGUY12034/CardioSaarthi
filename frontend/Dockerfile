@@ -19,10 +19,10 @@ RUN npm ci
 
 COPY . .
 
-# Where the browser -- not this container -- reaches the API. It runs on the
-# demonstrator's machine, so this is a host address even though the API is also
-# a container.
-ARG VITE_API_BASE_URL=http://localhost:8090/api
+# Where the browser reaches the API, relative to whatever host served the page.
+# nginx proxies /api to the API container, so this stays correct on localhost,
+# on another machine and behind a tunnel alike.
+ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build

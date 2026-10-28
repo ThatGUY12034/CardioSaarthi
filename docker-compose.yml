@@ -93,9 +93,12 @@ services:
     build:
       context: ./frontend
       args:
-        # Baked into the bundle at build time, because that is when Vite reads
-        # it. It is the address the browser uses, not one this container uses.
-        VITE_API_BASE_URL: http://localhost:${REVIEW_API_PORT:-8090}/api
+        # Relative, deliberately. Vite bakes this into the bundle at build
+        # time, so an absolute address fixes the image to one machine; nginx
+        # proxies /api to the API container, so the browser asks whichever
+        # host served it the page and the same image works on localhost, on
+        # the network and behind a tunnel.
+        VITE_API_BASE_URL: /api
     container_name: cardiosaarthi-frontend
     restart: unless-stopped
     depends_on:

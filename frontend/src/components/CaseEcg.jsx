@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axiosClient, { isDemoSession } from "../api/axiosClient";
+import axiosClient from "../api/axiosClient";
 import EcgImage from "./EcgImage";
 
 /**
@@ -27,7 +27,6 @@ let pendingDefault = null;
 async function resolveDefaultCase() {
   // Demo mode holds a token the API would reject, so asking is a round trip
   // that can only fail. The shipped render is the answer here.
-  if (isDemoSession()) return null;
   if (!pendingDefault) {
     pendingDefault = axiosClient
       .get("/study/cases", { params: { limit: 1 } })
