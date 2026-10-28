@@ -30,16 +30,17 @@ export default function FacultyDashboard() {
   const available = conditions.filter((condition) => condition.available);
   const unavailable = conditions.filter((condition) => !condition.available);
 
+  const loaded = stats !== null;
   const targetTotal = available.reduce((sum, condition) => sum + condition.targetCases, 0);
   const approvedTotal = available.reduce((sum, condition) => sum + condition.approved, 0);
-  const coverage = targetTotal ? Math.round((approvedTotal / targetTotal) * 100) : 0;
+  const coverage = targetTotal ? Math.round((approvedTotal / targetTotal) * 100) : null;
 
   const emptiest = [...available].sort((a, b) => b.shortfall - a.shortfall).slice(0, 6);
 
   return (
     <Layout role="FACULTY">
-      <h1 className="text-3xl font-bold">Faculty Dashboard</h1>
-      <p className="text-brand-muted mt-1">
+      <h1 className="page-title">Faculty Dashboard</h1>
+      <p className="page-subtitle">
         Case bank status and review progress. Every number here is read from the platform.
       </p>
 
@@ -56,8 +57,10 @@ export default function FacultyDashboard() {
         <StatCard
           icon="✅"
           label="Approved cases"
-          value={approvedTotal || "0"}
-          sublabel={`${coverage}% of the syllabus target`}
+          value={loaded ? approvedTotal : "—"}
+          sublabel={
+            coverage === null ? "syllabus target not loaded" : `${coverage}% of the syllabus target`
+          }
           color="green"
         />
         <StatCard
@@ -117,7 +120,8 @@ export default function FacultyDashboard() {
             corrections of +20 ms and −20 ms are 20 ms of error and zero bias.
           </p>
           {stats?.agreement?.length ? (
-            <table className="w-full text-sm mt-4">
+            <div className="overflow-x-auto mt-4">
+            <table className="w-full text-sm min-w-[22rem]">
               <thead className="text-xs text-brand-muted text-left">
                 <tr>
                   <th className="pb-2">Measure</th>
@@ -137,6 +141,7 @@ export default function FacultyDashboard() {
                 ))}
               </tbody>
             </table>
+            </div>
           ) : (
             <p className="text-sm text-brand-muted mt-4">
               Nothing to report yet. This table fills as reviewers correct measurements, and those

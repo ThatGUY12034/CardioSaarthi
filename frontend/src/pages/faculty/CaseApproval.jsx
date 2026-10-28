@@ -59,12 +59,17 @@ function statusTone(status) {
   return "text-brand-warning";
 }
 
+/** What the engine found, formatted the one way it is formatted. */
+function shownValue(parameter) {
+  if (parameter.kind !== "NUMERIC") return human(parameter.textValue);
+  return parameter.value === null ? "nothing" : parameter.value.toFixed(0);
+}
+
 /** One parameter row, with the right input for its kind. */
 function ParameterRow({ parameter, draft, onChange }) {
   const edited = draft !== undefined && draft !== "";
-  const shown = parameter.kind === "NUMERIC"
-    ? (parameter.value === null ? "—" : parameter.value.toFixed(0))
-    : human(parameter.textValue);
+  const fieldId = `parameter-${parameter.name}`;
+  const shown = shownValue(parameter);
 
   return (
     <div className="grid grid-cols-[2rem_1fr_auto_minmax(11rem,auto)] items-center gap-3 text-sm border-b border-white/5 py-2">
@@ -92,9 +97,13 @@ function ParameterRow({ parameter, draft, onChange }) {
 
       {parameter.kind === "NUMERIC" ? (
         <input
+          id={fieldId}
+          aria-label={`Your correction for ${parameter.label}${
+            parameter.unit ? ` in ${parameter.unit}` : ""
+          }, engine measured ${shownValue(parameter)}`}
           type="number"
           step="1"
-          placeholder="correct"
+          placeholder="—"
           value={draft ?? ""}
           onChange={(event) => onChange(parameter.name, event.target.value)}
           className={`w-full bg-brand-bg2 border rounded px-2 py-1 text-sm text-right ${
@@ -108,6 +117,8 @@ function ParameterRow({ parameter, draft, onChange }) {
         />
       ) : CATEGORY_OPTIONS[parameter.name] ? (
         <select
+          id={fieldId}
+          aria-label={`Your correction for ${parameter.label}, engine read ${shownValue(parameter)}`}
           value={draft ?? parameter.textValue ?? ""}
           onChange={(event) => onChange(parameter.name, event.target.value)}
           className={`w-full bg-brand-bg2 border rounded px-2 py-1 text-sm ${
@@ -322,8 +333,8 @@ export default function CaseApproval() {
 
   return (
     <Layout role="FACULTY">
-      <h1 className="text-3xl font-bold">Case Approval</h1>
-      <p className="text-brand-muted mt-1">
+      <h1 className="page-title">Case Approval</h1>
+      <p className="page-subtitle">
         Open a case to verify all nine interpretation parameters. Correct any of them; the engine's
         value is kept either way.
       </p>
@@ -397,9 +408,15 @@ export default function CaseApproval() {
                       {shown.narrative && <NarrativeReview narrative={shown.narrative} />}
 
                       <div>
-                        <h3 className="font-semibold text-sm mb-2">
+                        <h3 className="font-semibold text-sm">
                           The nine parameters a student is examined on
                         </h3>
+                        <div className="grid grid-cols-[2rem_1fr_auto_minmax(11rem,auto)] gap-3 mt-3 mb-1 text-[11px] uppercase tracking-wider text-brand-muted">
+                          <span aria-hidden="true" />
+                          <span>Parameter</span>
+                          <span className="text-right">Engine measured</span>
+                          <span className="text-right">Your correction</span>
+                        </div>
                         {shown.parameters.map((parameter) => (
                           <ParameterRow
                             key={parameter.name}
@@ -427,7 +444,11 @@ export default function CaseApproval() {
                           {corrections.length === 1 ? "" : "s"}
                         </button>
                         <span className="flex items-center gap-2 ml-auto">
+                          <label className="sr-only" htmlFor="approval-reject-reason">
+                            Reason for rejecting this case
+                          </label>
                           <select
+                            id="approval-reject-reason"
                             value={rejectionReason}
                             onChange={(event) => setRejectionReason(event.target.value)}
                             className="bg-brand-bg2 border border-white/10 rounded px-2 py-2 text-xs"

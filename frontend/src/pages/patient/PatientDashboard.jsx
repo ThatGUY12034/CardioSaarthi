@@ -5,7 +5,7 @@ import EcgImage from "../../components/EcgImage";
 import { EmptyState, ErrorState, SkeletonCard } from "../../components/States";
 import { getReports } from "../../api/patientApi";
 import { errorMessage } from "../../api/studyApi";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/useAuth";
 
 /**
  * The reports issued to this patient.

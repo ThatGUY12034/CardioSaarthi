@@ -194,8 +194,8 @@ export default function ReviewQueue() {
     <Layout role="FACULTY">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Review Queue</h1>
-          <p className="text-brand-muted mt-1">
+          <h1 className="page-title">Review Queue</h1>
+          <p className="page-subtitle">
             {queue.total} case{queue.total === 1 ? "" : "s"} awaiting approval. Nothing reaches a
             student until a reviewer approves it.
           </p>
@@ -310,57 +310,83 @@ export default function ReviewQueue() {
 
               {/* measurements, editable */}
               <div className="card p-5">
-                <h3 className="font-semibold">Computed measurements</h3>
+                <h3 className="font-semibold">Measurements</h3>
                 <p className="text-xs text-brand-muted mt-1">
                   Spread is median absolute deviation across beats. Type a value only to correct it;
                   the engine's number is kept either way.
                 </p>
-                <div className="mt-4 space-y-2">
-                  {shown.measurements.map((measure) => (
-                    <div
-                      key={measure.name}
-                      className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm border-b border-white/5 pb-2"
-                    >
-                      <div>
-                        <span className="font-medium">
-                          {MEASURE_LABELS[measure.name] || measure.name}
-                        </span>
-                        <span className={`ml-2 text-xs ${statusTone(measure.status)}`}>
-                          {measure.status === "NOT_MEASURABLE"
-                            ? "not measurable"
-                            : measure.status.toLowerCase().replace(/_/g, " ")}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-mono">
-                          {measure.value === null ? "—" : measure.value.toFixed(0)}
-                        </span>
-                        <span className="text-brand-muted text-xs ml-1">{measure.unit}</span>
-                        {measure.mad !== null && (
-                          <span className="text-brand-muted text-xs ml-2">
-                            ±{measure.mad.toFixed(0)}
+
+                {/* Which column is whose, said once and in words. Two numbers
+                    side by side with no headings is the one arrangement that
+                    could be read as a correction replacing a measurement, and
+                    the whole point of keeping both is that it does not. */}
+                <div className="grid grid-cols-[1fr_auto_6.5rem] gap-3 mt-4 text-[11px] uppercase tracking-wider text-brand-muted">
+                  <span>Parameter</span>
+                  <span className="text-right">Engine measured</span>
+                  <span className="text-right">Your correction</span>
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  {shown.measurements.map((measure) => {
+                    const measureLabel = MEASURE_LABELS[measure.name] || measure.name;
+                    const fieldId = `correct-${shown.id}-${measure.name}`;
+                    return (
+                      <div
+                        key={measure.name}
+                        className="grid grid-cols-[1fr_auto_6.5rem] items-center gap-3 text-sm border-b border-white/5 pb-2"
+                      >
+                        <div>
+                          <span className="font-medium">{measureLabel}</span>
+                          <span className={`ml-2 text-xs ${statusTone(measure.status)}`}>
+                            {measure.status === "NOT_MEASURABLE"
+                              ? "not measurable"
+                              : measure.status.toLowerCase().replace(/_/g, " ")}
                           </span>
-                        )}
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono">
+                            {measure.value === null ? "—" : measure.value.toFixed(0)}
+                          </span>
+                          <span className="text-brand-muted text-xs ml-1">{measure.unit}</span>
+                          {measure.mad !== null && (
+                            <span className="text-brand-muted text-xs ml-2">
+                              ±{measure.mad.toFixed(0)}
+                            </span>
+                          )}
+                        </div>
+                        {/* Seven identical number fields, each announced as
+                            "edit text", told a screen-reader user nothing about
+                            which measure they were about to change. */}
+                        <label className="sr-only" htmlFor={fieldId}>
+                          Your correction for {measureLabel}
+                          {measure.unit ? ` in ${measure.unit}` : ""}, engine measured{" "}
+                          {measure.value === null ? "nothing" : measure.value.toFixed(0)}
+                        </label>
+                        <input
+                          id={fieldId}
+                          type="number"
+                          step="1"
+                          placeholder="—"
+                          value={corrections[measure.name] ?? ""}
+                          onChange={(event) =>
+                            setCorrections({ ...corrections, [measure.name]: event.target.value })
+                          }
+                          className="w-full bg-brand-bg2 border border-white/10 rounded px-2 py-1 text-sm text-right"
+                        />
                       </div>
-                      <input
-                        type="number"
-                        step="1"
-                        placeholder="correct"
-                        value={corrections[measure.name] ?? ""}
-                        onChange={(event) =>
-                          setCorrections({ ...corrections, [measure.name]: event.target.value })
-                        }
-                        className="w-24 bg-brand-bg2 border border-white/10 rounded px-2 py-1 text-sm text-right"
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
               {/* the decision */}
               <div className="card p-5">
                 <h3 className="font-semibold">Decision</h3>
+                <label className="sr-only" htmlFor={`review-note-${shown.id}`}>
+                  Note on this review (optional)
+                </label>
                 <textarea
+                  id={`review-note-${shown.id}`}
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
                   rows={2}
@@ -394,7 +420,11 @@ export default function ReviewQueue() {
                     {editedMeasures.length === 1 ? "" : "s"}
                   </button>
                   <span className="flex items-center gap-2 ml-auto">
+                    <label className="sr-only" htmlFor={`reject-reason-${shown.id}`}>
+                      Reason for rejecting this case
+                    </label>
                     <select
+                      id={`reject-reason-${shown.id}`}
                       value={rejectionReason}
                       onChange={(event) => setRejectionReason(event.target.value)}
                       className="bg-brand-bg2 border border-white/10 rounded px-2 py-2 text-xs"

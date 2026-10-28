@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import Layout from "../../components/Layout";
 import EcgImage from "../../components/EcgImage";
 import CaseBrief from "../../components/CaseBrief";
-import { InlineError } from "../../components/States";
+import { ErrorState, InlineError, SkeletonCard } from "../../components/States";
 import TutorPanel from "../../components/TutorPanel";
 import {
   errorMessage,
@@ -37,7 +37,12 @@ function AnswerInput({ step, draft, onChange, disabled }) {
   if (step.answerKind === "NUMERIC") {
     return (
       <div className="flex flex-wrap items-center gap-3">
+        <label className="sr-only" htmlFor="answer-value">
+          {step.label}
+          {step.unit ? ` in ${step.unit}` : ""}
+        </label>
         <input
+          id="answer-value"
           type="number"
           autoFocus
           disabled={disabled}
@@ -77,22 +82,27 @@ function AnswerInput({ step, draft, onChange, disabled }) {
       });
     return (
       <div>
-        <div className="flex flex-wrap gap-2">
-          {LEADS.map((lead) => (
-            <button
-              key={lead}
-              type="button"
-              disabled={disabled}
-              onClick={() => toggle(lead)}
-              className={`px-3 py-1.5 rounded border text-sm ${
-                selected.includes(lead)
-                  ? "border-brand-primary text-white"
-                  : "border-white/10 text-brand-muted"
-              }`}
-            >
-              {lead}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-2" role="group" aria-label={step.label}>
+          {LEADS.map((lead) => {
+            const on = selected.includes(lead);
+            return (
+              <button
+                key={lead}
+                type="button"
+                disabled={disabled}
+                aria-pressed={on}
+                onClick={() => toggle(lead)}
+                className={`px-3 py-1.5 rounded border text-sm ${
+                  on
+                    ? "border-brand-primary bg-brand-primary/20 text-white"
+                    : "border-white/10 text-brand-muted"
+                }`}
+              >
+                {on ? "✓ " : ""}
+                {lead}
+              </button>
+            );
+          })}
         </div>
         <label className="flex items-center gap-2 text-sm text-brand-muted mt-3">
           <input
@@ -108,22 +118,27 @@ function AnswerInput({ step, draft, onChange, disabled }) {
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {step.options.map((option) => (
-        <button
-          key={option}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange({ category: option })}
-          className={`px-4 py-2 rounded border text-sm ${
-            draft.category === option
-              ? "border-brand-primary text-white"
-              : "border-white/10 text-brand-muted"
-          }`}
-        >
-          {human(option)}
-        </button>
-      ))}
+    <div className="flex flex-wrap gap-2" role="group" aria-label={step.label}>
+      {step.options.map((option) => {
+        const on = draft.category === option;
+        return (
+          <button
+            key={option}
+            type="button"
+            disabled={disabled}
+            aria-pressed={on}
+            onClick={() => onChange({ category: option })}
+            className={`px-4 py-2 rounded border text-sm ${
+              on
+                ? "border-brand-primary bg-brand-primary/20 text-white"
+                : "border-white/10 text-brand-muted"
+            }`}
+          >
+            {on ? "✓ " : ""}
+            {human(option)}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -245,11 +260,12 @@ export default function CasePractice() {
   if (error && !session) {
     return (
       <Layout role="STUDENT">
-        <div className="card p-8 mt-8">
-          <p className="text-brand-danger">{error}</p>
-          <button onClick={() => navigate("/student/cases")} className="btn-ghost text-sm mt-4">
-            Back to cases
-          </button>
+        <div className="mt-8">
+          <ErrorState
+            title="This case did not open"
+            message={error}
+            onRetry={() => navigate("/student/cases")}
+          />
         </div>
       </Layout>
     );
@@ -258,7 +274,10 @@ export default function CasePractice() {
   if (!session || !steps) {
     return (
       <Layout role="STUDENT">
-        <p className="text-brand-muted mt-8">Opening the case…</p>
+        <div className="mt-8 space-y-4" role="status" aria-label="Opening the case">
+          <SkeletonCard lines={1} />
+          <SkeletonCard lines={6} />
+        </div>
       </Layout>
     );
   }
@@ -280,7 +299,7 @@ export default function CasePractice() {
           {/* Deliberately not the diagnosis. Naming the condition above the
               trace would hand the student the answer to the step they are
               about to be marked on. */}
-          <h1 className="text-2xl font-bold">Recording {id}</h1>
+          <h1 className="page-title">Recording {id}</h1>
           <span className="text-xs px-2 py-1 rounded-full bg-brand-primary/20 text-brand-accent">
             {human(mode)}
           </span>
@@ -297,7 +316,7 @@ export default function CasePractice() {
       </div>
 
       {/* Progress through the nine, so the sequence itself is visible. */}
-      <div className="flex gap-1 mt-4">
+      <div className="flex gap-1 mt-4" aria-hidden="true">
         {steps.map((step) => (
           <div
             key={step.step}
@@ -339,7 +358,11 @@ export default function CasePractice() {
               <p className="text-xs text-brand-muted mt-1">
                 In your own words. This is read, not marked.
               </p>
+              <label className="sr-only" htmlFor="interpretation">
+                Your interpretation of this recording
+              </label>
               <textarea
+                id="interpretation"
                 rows={5}
                 value={interpretation}
                 onChange={(event) => setInterpretation(event.target.value)}
@@ -391,8 +414,11 @@ export default function CasePractice() {
                   ? "border-brand-success/40"
                   : turn.outcome === "NOT_GRADABLE"
                     ? "border-white/10"
-                    : "border-brand-warning/40"
+                    : turn.feedbackType === "HINT"
+                      ? "border-brand-warning/40"
+                      : "border-brand-danger/40"
               }`}
+              role="status"
             >
               <p
                 className={`font-semibold text-sm ${
@@ -400,7 +426,9 @@ export default function CasePractice() {
                     ? "text-brand-success"
                     : turn.outcome === "NOT_GRADABLE"
                       ? "text-brand-muted"
-                      : "text-brand-warning"
+                      : turn.feedbackType === "HINT"
+                        ? "text-brand-warning"
+                        : "text-brand-danger"
                 }`}
               >
                 {turn.outcome === "CORRECT"

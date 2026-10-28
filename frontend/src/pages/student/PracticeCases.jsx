@@ -64,7 +64,7 @@ export default function PracticeCases() {
     <Layout role="STUDENT">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Practice Cases</h1>
+          <h1 className="page-title">Practice Cases</h1>
           <p className="text-brand-muted mt-1">
             Real recordings, each checked by a member of faculty before it reached you.
           </p>

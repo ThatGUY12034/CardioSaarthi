@@ -1,7 +1,6 @@
-import { createContext, useContext, useState } from "react";
+import { useState } from "react";
 import axiosClient from "../api/axiosClient";
-
-const AuthContext = createContext(null);
+import { AuthContext } from "./authContext";
 
 /**
  * Whoever was signed in when the tab was last closed.
@@ -57,11 +56,3 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   );
 }
-
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used inside <AuthProvider>");
-  }
-  return ctx;
-};

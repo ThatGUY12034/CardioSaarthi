@@ -37,7 +37,7 @@ export default function ECGWaveform({ imageUrl, height = 260, label }) {
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
-  }, [imageUrl]);
+  }, [imageUrl, height]);
 
   if (imageUrl) {
     return (

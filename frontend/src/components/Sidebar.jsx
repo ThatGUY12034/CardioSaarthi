@@ -16,9 +16,12 @@ const facultyLinks = [
   { to: "/faculty/library", label: "Reference Library", icon: "◇" },
 ];
 
+// No "Upload Report" entry: there is no upload. The route still exists and
+// explains why, for anyone who followed an old link, but advertising a feature
+// in the navigation that the platform cannot perform is the same lie told
+// earlier.
 const patientLinks = [
   { to: "/patient/dashboard", label: "Dashboard", icon: "◈" },
-  { to: "/patient/upload", label: "Upload Report", icon: "◇" },
   { to: "/patient/glossary", label: "Learn", icon: "◇" },
 ];
 
@@ -83,7 +86,7 @@ export default function Sidebar({ role, open = false, onClose }) {
         tabIndex={-1}
         aria-label="Main navigation"
         aria-hidden={!open ? undefined : false}
-        className={`w-64 shrink-0 flex-col border-r border-white/5 bg-[#0a1128]/95 md:bg-[#0a1128]/60 backdrop-blur-xl
+        className={`w-64 shrink-0 flex-col border-r border-white/5 bg-brand-bg2/95 md:bg-brand-bg2/60 backdrop-blur-xl
           fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:transition-none
           ${open ? "flex translate-x-0" : "hidden -translate-x-full"}
           md:static md:flex md:translate-x-0`}

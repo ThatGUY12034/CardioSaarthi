@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 
 export default function Navbar({ onMenuClick }) {
   const { user, logout } = useAuth();
@@ -15,7 +15,7 @@ export default function Navbar({ onMenuClick }) {
     : "?";
 
   return (
-    <header className="h-16 sticky top-0 z-40 backdrop-blur-xl bg-[#070d1f]/80 border-b border-white/5 px-4 sm:px-6 flex items-center justify-between gap-3">
+    <header className="h-16 sticky top-0 z-40 backdrop-blur-xl bg-brand-bg/80 border-b border-white/5 px-4 sm:px-6 flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
         {/* Only below the breakpoint, where the rail is a drawer. On a desktop
             the navigation is already on screen and a button to reveal it would

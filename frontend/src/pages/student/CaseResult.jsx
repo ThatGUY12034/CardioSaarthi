@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import Layout from "../../components/Layout";
 import EcgImage from "../../components/EcgImage";
+import { ErrorState, SkeletonCard } from "../../components/States";
 import { errorMessage, getSummary } from "../../api/studyApi";
 
 /**
@@ -63,7 +64,7 @@ export default function CaseResult() {
           >
             ← Back to cases
           </button>
-          <h1 className="text-2xl font-bold mt-1">Recording {id} — results</h1>
+          <h1 className="page-title mt-1">Recording {id} — results</h1>
         </div>
         {score !== null && (
           <div className="text-right">
@@ -87,8 +88,21 @@ export default function CaseResult() {
       </div>
 
       {(error || missingSession) && (
-        <div className="mt-6 rounded border border-brand-danger/40 bg-brand-danger/10 px-4 py-3 text-sm text-brand-danger">
-          {error || "This page needs a finished case. Start one from the case list."}
+        <div className="mt-6">
+          <ErrorState
+            title={missingSession ? "No finished case to show" : "Results did not load"}
+            message={
+              error || "This page needs a finished case. Start one from the case list."
+            }
+            onRetry={() => navigate("/student/cases")}
+          />
+        </div>
+      )}
+
+      {!summary && !error && !missingSession && (
+        <div className="mt-8 space-y-3" role="status" aria-label="Loading results">
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={5} />
         </div>
       )}
 
@@ -107,7 +121,11 @@ export default function CaseResult() {
                     </span>
                     <span
                       className={`text-xs ${
-                        step.correct ? "text-brand-success" : "text-brand-warning"
+                        step.correct
+                          ? "text-brand-success"
+                          : step.errorLabel === "NOT_GRADED"
+                            ? "text-brand-muted"
+                            : "text-brand-danger"
                       }`}
                     >
                       {step.correct ? "correct" : (step.errorLabel || "not marked")

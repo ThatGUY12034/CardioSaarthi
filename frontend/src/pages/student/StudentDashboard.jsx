@@ -11,7 +11,7 @@ import {
   getProgress,
   getRecentSessions,
 } from "../../api/studyApi";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/useAuth";
 
 /**
  * The first screen a student sees, and now the first one telling the truth.
