@@ -97,11 +97,25 @@ public class SessionService {
                     "That case is not available: only cases a reviewer has approved are served.");
         }
 
+        // Two requests arrive together, both find no open session, and both
+        // try to insert one. The interface does exactly this: its start effect
+        // runs twice, so this is the ordinary path rather than a rare race.
+        //
+        // The loser has to be told which session won, and that cannot be done
+        // by catching the unique violation: raising it aborts the transaction,
+        // so the recovery query inside the catch fails as well and the student
+        // gets a 500 for opening a case that is sitting there working. Letting
+        // the index absorb the conflict instead -- ON CONFLICT DO NOTHING, on
+        // the same partial predicate the index is built with -- keeps the
+        // transaction alive, and no rows back means somebody else got there.
         long sessionId;
         try {
-            sessionId = db.sql("""
+            Optional<Long> inserted = db.sql("""
                     INSERT INTO sessions (student_id, case_id, mode, persona_version, state)
                     VALUES (:studentId, :caseId, :mode, :persona, 'AWAITING_STEP')
+                    ON CONFLICT (student_id, case_id)
+                        WHERE state NOT IN ('CASE_COMPLETE', 'ABANDONED')
+                        DO NOTHING
                     RETURNING id
                     """)
                     .param("studentId", studentId)
@@ -109,15 +123,18 @@ public class SessionService {
                     .param("mode", mode.name())
                     .param("persona", PERSONA_VERSION)
                     .query(Long.class)
-                    .single();
-        } catch (org.springframework.dao.DuplicateKeyException race) {
-            // Two requests arrived together, both found no open session, and
-            // both tried to insert one. The interface does exactly this: its
-            // start effect runs twice. The unique index settles it, and the
-            // loser answers with the session that won rather than an error.
-            return openSessionFor(studentId, caseId)
-                    .map(this::view)
-                    .orElseThrow(() -> new ConflictException("Could not start this case. Try again."));
+                    .optional();
+
+            if (inserted.isEmpty()) {
+                // ON CONFLICT waited for the other transaction to finish, so
+                // its session is committed and visible to this statement.
+                long winner = openSessionFor(studentId, caseId)
+                        .orElseThrow(() -> new ConflictException(
+                                "Could not start this case. Try again."));
+                log.info("student {} joined session {} on case {}", studentId, winner, caseId);
+                return view(winner);
+            }
+            sessionId = inserted.get();
         } catch (org.springframework.dao.DataAccessException exception) {
             // The database trigger is the backstop, and it raises a plain
             // exception that Spring cannot categorise. Reaching here means the
