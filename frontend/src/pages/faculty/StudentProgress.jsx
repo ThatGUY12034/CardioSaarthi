@@ -51,6 +51,44 @@ function readExpected(raw) {
   }
 }
 
+/**
+ * The trace behind one mistake.
+ *
+ * <p>Click to enlarge: a teacher cannot judge a QT misread from a thumbnail,
+ * and writing a remark about one without looking at the trace is guessing.
+ *
+ * <p>The annotated render is offered alongside the clean one because it shows
+ * where the engine placed the boundaries. For a measurement error that is the
+ * whole question -- the student read 333 and the recording showed 444, and the
+ * useful thing to tell them is where the T wave actually ends.
+ */
+function MistakeTrace({ caseId, sourceEcgId }) {
+  const [annotated, setAnnotated] = useState(false);
+  return (
+    <div>
+      <EcgImage
+        caseId={caseId}
+        kind={annotated ? "annotated" : "clean"}
+        height={120}
+        className="rounded"
+      />
+      <div className="flex items-center justify-between gap-2 mt-2">
+        <span className="text-[11px] text-brand-muted">
+          Recording {sourceEcgId ?? caseId}
+        </span>
+        <button
+          type="button"
+          onClick={() => setAnnotated((on) => !on)}
+          className="text-[11px] text-brand-accent hover:underline"
+        >
+          {annotated ? "Hide boundaries" : "Show boundaries"}
+        </button>
+      </div>
+      <p className="text-[10px] text-brand-muted mt-1">Click the trace to enlarge.</p>
+    </div>
+  );
+}
+
 function RemarkBox({ mistake, onSaved }) {
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState("");
@@ -257,13 +295,8 @@ export default function StudentProgress() {
         <div className="space-y-4 mt-4">
           {detail.mistakes.map((m) => (
             <article key={m.sessionStepId} className="card p-5">
-              <div className="grid md:grid-cols-[160px_1fr] gap-5">
-                <div>
-                  <EcgImage caseId={m.caseId} kind="clean" height={100} zoomable={false} />
-                  <p className="text-[11px] text-brand-muted mt-2">
-                    Recording {m.sourceEcgId ?? m.caseId}
-                  </p>
-                </div>
+              <div className="grid md:grid-cols-[210px_1fr] gap-5">
+                <MistakeTrace caseId={m.caseId} sourceEcgId={m.sourceEcgId} />
                 <div>
                   <div className="flex items-baseline justify-between gap-3 flex-wrap">
                     <h3 className="font-semibold text-sm">
