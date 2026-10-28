@@ -1,64 +1,39 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState } from "react";
 import axiosClient from "../api/axiosClient";
 
 const AuthContext = createContext(null);
 
-// Normalize role from URL (lowercase) to internal (uppercase)
-const normalizeRole = (role) => {
-  const r = String(role || "").toLowerCase();
-  if (r === "student") return "STUDENT";
-  if (r === "faculty") return "FACULTY";
-  if (r === "patient") return "PATIENT";
-  if (r === "admin") return "ADMIN";
-  return "STUDENT";
-};
-
-const demoUsers = {
-  STUDENT: {
-    id: 101,
-    name: "Saniya Mankar",
-    role: "STUDENT",
-    email: "saniya@terna.edu",
-    collegeId: "TE18/2023/C5001",
-  },
-  FACULTY: {
-    id: 201,
-    name: "Dr. Sharma",
-    role: "FACULTY",
-    email: "sharma@terna.edu",
-    collegeId: "TE18/FAC/C001",
-  },
-  PATIENT: {
-    id: 301,
-    name: "Ramesh Kumar",
-    role: "PATIENT",
-    email: "ramesh@example.com",
-    collegeId: "PT001",
-  },
-  ADMIN: {
-    id: 401,
-    name: "Neel Gosavi",
-    role: "ADMIN",
-    email: "neel@terna.edu",
-    collegeId: "ADMIN01",
-  },
-};
+/**
+ * Whoever was signed in when the tab was last closed.
+ *
+ * Read once, as this state's initial value, rather than in an effect that then
+ * calls setState: an effect runs after the first paint, so the guarded routes
+ * saw no user, bounced to the role chooser, and only then learned there was a
+ * session. Reloading a dashboard threw you out of it.
+ */
+function signedInLastTime() {
+  try {
+    const stored = localStorage.getItem("cs_user");
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    // Unparseable is the same as absent, and keeping it would fail again.
+    localStorage.removeItem("cs_user");
+    return null;
+  }
+}
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(signedInLastTime);
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("cs_user");
-      if (stored) setUser(JSON.parse(stored));
-    } catch (e) {
-      localStorage.removeItem("cs_user");
-    }
-    setLoading(false);
-  }, []);
-
-  // Real login (calls Spring Boot backend)
+  /**
+   * The only way into the application.
+   *
+   * There used to be a second one: a "demo mode" that built a user object in
+   * the browser and wrote a token the server had never issued. It let anyone
+   * reach a faculty dashboard without authenticating, and because the token was
+   * not a JWT every request behind it failed, so what it actually showed was an
+   * empty console under a fabricated name.
+   */
   const login = async (role, credentials) => {
     const { data } = await axiosClient.post(
       `/auth/login/${String(role).toLowerCase()}`,
@@ -70,18 +45,6 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
-  // Demo login (no backend needed — used by "Skip — Enter Demo Mode")
-  const mockLogin = (role) => {
-    const normalized = normalizeRole(role);
-    const demoUser = demoUsers[normalized];
-
-    localStorage.setItem("cs_token", "demo-token-" + normalized);
-    localStorage.setItem("cs_user", JSON.stringify(demoUser));
-    setUser(demoUser);
-
-    return demoUser;
-  };
-
   const logout = () => {
     localStorage.removeItem("cs_token");
     localStorage.removeItem("cs_user");
@@ -89,7 +52,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, mockLogin, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

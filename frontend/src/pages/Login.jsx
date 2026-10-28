@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 export default function Login() {
   const { role } = useParams();
   const navigate = useNavigate();
-  const { login, mockLogin } = useAuth();
+  const { login } = useAuth();
   const [mode, setMode] = useState("college");
   const [form, setForm] = useState({ collegeId: "", email: "", password: "" });
   const [error, setError] = useState("");
@@ -30,24 +30,6 @@ export default function Login() {
       setLoading(false);
     }
   };
-
-  const handleDemo = () => {
-  try {
-    const demoUser = mockLogin(role);
-    // Explicit routing per role (more reliable than string manipulation)
-    const routes = {
-      STUDENT: "/student/dashboard",
-      FACULTY: "/faculty/dashboard",
-      PATIENT: "/patient/dashboard",
-      ADMIN: "/admin/dashboard",
-    };
-    const target = routes[demoUser.role] || "/student/dashboard";
-    navigate(target, { replace: true });
-  } catch (err) {
-    console.error("Demo login failed:", err);
-    setError("Demo mode failed. Please try again.");
-  }
-};
 
   return (
     <div className="min-h-screen grid md:grid-cols-2">
@@ -153,10 +135,6 @@ export default function Login() {
 
             <button type="submit" disabled={loading} className="btn-primary w-full">
               {loading ? "Logging in..." : "Login"}
-            </button>
-
-            <button type="button" onClick={handleDemo} className="btn-ghost w-full text-sm">
-              Skip — Enter Demo Mode
             </button>
           </form>
 
