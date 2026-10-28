@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Layout from "../../components/Layout";
+import EnrolStudentForm from "../../components/EnrolStudentForm";
 import { EmptyState, ErrorState, InlineError, SkeletonRows } from "../../components/States";
 import { getUsers, setActive } from "../../api/adminApi";
 import { errorMessage } from "../../api/studyApi";
@@ -84,6 +85,10 @@ export default function ManageUsers() {
       </p>
 
       {error && <div className="mt-6"><InlineError message={error} /></div>}
+
+      {/* The class list points here for enrolment, so this is where it has to
+          be. Until now it pointed at nothing. */}
+      <EnrolStudentForm onEnrolled={() => setReloadKey((n) => n + 1)} />
 
       <div className="flex flex-wrap items-center gap-3 mt-6">
         <div className="inline-flex rounded-lg bg-brand-card p-1 gap-1">

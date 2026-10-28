@@ -31,6 +31,22 @@ export async function setActive(kind, id, active) {
   return data;
 }
 
+/**
+ * Enrol a student, or reset an existing one's password.
+ *
+ * <p>Upsert on the email address, for the same reason the reviewer endpoint
+ * does it: the realistic task is "this student has forgotten their password",
+ * and a create-only form leaves no way to do it. Their attempts and the
+ * remarks left on them are keyed on the row, so they survive a reset.
+ *
+ * <p>Twelve characters minimum, enforced by the server. The four-digit
+ * demonstration logins come from a configuration flag and are not created here.
+ */
+export async function enrolStudent(student) {
+  const { data } = await axiosClient.post("/admin/students", student);
+  return data;
+}
+
 /** Syllabus coverage per condition, thinnest first. */
 export async function getCoverage() {
   const { data } = await axiosClient.get("/admin/coverage");
