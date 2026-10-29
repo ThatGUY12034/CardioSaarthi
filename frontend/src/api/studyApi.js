@@ -77,6 +77,12 @@ export async function markRemarkRead(id) {
   await axiosClient.post(`/study/remarks/${id}/read`);
 }
 
+/** Just the number, for the badge in the navigation. Returns an integer. */
+export async function getUnreadRemarkCount() {
+  const { data } = await axiosClient.get("/study/remarks/unread-count");
+  return data.unread;
+}
+
 /** The nine steps, and what each accepts. Served so the form cannot drift. */
 export async function getSteps() {
   const { data } = await axiosClient.get("/study/steps");

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getRemarks, markRemarkRead } from "../api/studyApi";
+import { useUnreadRemarks } from "../context/useUnreadRemarks";
 
 /**
  * What a teacher said, and about which attempt.
@@ -12,6 +13,7 @@ import { getRemarks, markRemarkRead } from "../api/studyApi";
 export default function RemarksPanel({ limit = 10 }) {
   const [remarks, setRemarks] = useState(null);
   const [open, setOpen] = useState(null);
+  const { noteOneRead } = useUnreadRemarks();
 
   useEffect(() => {
     let cancelled = false;
@@ -37,6 +39,10 @@ export default function RemarksPanel({ limit = 10 }) {
         setRemarks((current) =>
           current.map((r) => (r.id === remark.id ? { ...r, readAt: new Date().toISOString() } : r))
         );
+        // The badge in the navigation is reading the same number. Told here
+        // rather than left to re-fetch, so it changes with the row the student
+        // just opened instead of on their next page.
+        noteOneRead();
       } catch {
         // Marking read is a convenience. Failing to record it should not stop
         // the student reading the thing.

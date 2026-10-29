@@ -204,6 +204,29 @@ public class ProgressController {
                 .list();
     }
 
+    public record UnreadRemarks(int unread) {
+    }
+
+    /**
+     * How many remarks are waiting, for the badge in the navigation.
+     *
+     * <p>Separate from {@link #remarks(int)} rather than counted from it. That
+     * query joins six tables and carries every body back so the panel can show
+     * them; the badge needs one integer, and it is fetched on every page a
+     * student opens.
+     */
+    @GetMapping("/remarks/unread-count")
+    public UnreadRemarks unreadRemarks() {
+        return new UnreadRemarks(db.sql("""
+                SELECT count(*)
+                FROM faculty_remarks
+                WHERE student_id = :studentId AND read_at IS NULL
+                """)
+                .param("studentId", currentStudent.id())
+                .query(Integer.class)
+                .single());
+    }
+
     /** Marking read is the one change permitted to a remark; a trigger enforces the rest. */
     @org.springframework.web.bind.annotation.PostMapping("/remarks/{id}/read")
     public void markRead(@org.springframework.web.bind.annotation.PathVariable long id) {

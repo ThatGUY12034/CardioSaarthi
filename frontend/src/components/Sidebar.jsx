@@ -1,10 +1,16 @@
 import { useEffect, useRef } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useUnreadRemarks } from "../context/useUnreadRemarks";
 
+// `badge: "remarks"` puts the unread count on Progress rather than Dashboard.
+// A student reading the dashboard already has the remarks in front of them, so
+// a number there says nothing they cannot see; the point of the badge is to be
+// visible from the pages where they are not, and Progress is where the full
+// list lives.
 const studentLinks = [
   { to: "/student/dashboard", label: "Dashboard", icon: "◈" },
   { to: "/student/cases", label: "Practice Cases", icon: "◇" },
-  { to: "/student/progress", label: "Progress", icon: "◇" },
+  { to: "/student/progress", label: "Progress", icon: "◇", badge: "remarks" },
   { to: "/student/leaderboard", label: "Leaderboard", icon: "◇" },
 ];
 
@@ -50,6 +56,7 @@ export default function Sidebar({ role, open = false, onClose }) {
   const links = linkMap[role] || [];
   const location = useLocation();
   const panel = useRef(null);
+  const { unread } = useUnreadRemarks();
 
   // Following a link should close the drawer. Without this the destination
   // renders underneath a menu that is still covering it.
@@ -121,6 +128,18 @@ export default function Sidebar({ role, open = false, onClose }) {
                     {l.icon}
                   </span>
                   <span>{l.label}</span>
+                  {l.badge === "remarks" && unread > 0 && (
+                    // aria-label rather than the bare number: a screen reader
+                    // reading "Progress 2" says nothing about what the two are.
+                    <span
+                      aria-label={`${unread} unread remark${unread === 1 ? "" : "s"} from your faculty`}
+                      className="ml-auto min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-[10px] font-semibold
+                        leading-none text-center tabular bg-brand-primary/25 text-brand-accent
+                        border border-brand-primary/40"
+                    >
+                      {unread > 9 ? "9+" : unread}
+                    </span>
+                  )}
                 </>
               )}
             </NavLink>
