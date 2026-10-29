@@ -13,6 +13,13 @@
 # anonymous and temporary. The address is different every run, so start this
 # before the room fills up rather than during.
 
+param(
+    # Bring the stack up and check it answers, without publishing anything.
+    # Worth running once before the day itself: it proves the containers and
+    # the data are fine while nothing is reachable from outside this machine.
+    [switch] $NoTunnel
+)
+
 $ErrorActionPreference = 'Stop'
 
 $repo = Split-Path -Parent $PSScriptRoot
@@ -45,7 +52,12 @@ Say '  CardioSaarthi - going live' 'Cyan'
 Say '  =========================' 'Cyan'
 Say ''
 
-cmd /c "docker info" > $null 2>&1
+# Every redirection below happens inside cmd, never in PowerShell. Windows
+# PowerShell 5.1 wraps a native command's stderr in error records, and with
+# $ErrorActionPreference = 'Stop' that kills the script on output the command
+# considers perfectly normal -- docker compose writes its progress to stderr
+# even when everything worked.
+cmd /c "docker info >nul 2>&1"
 if ($LASTEXITCODE -ne 0) {
     Say '  Docker is not running. Start Docker Desktop, wait for the whale icon' 'Red'
     Say '  to stop animating, then run this again.' 'Red'
@@ -55,7 +67,7 @@ Say '  [1/4] Docker is running.' 'Green'
 
 Push-Location $repo
 try {
-    cmd /c "docker compose --profile demo up -d" 2>&1 | Out-Null
+    cmd /c "docker compose --profile demo up -d >nul 2>&1"
     if ($LASTEXITCODE -ne 0) {
         Say '  The stack did not start. Run this to see why:' 'Red'
         Say '      docker compose --profile demo up' 'Yellow'
@@ -93,6 +105,16 @@ if (-not $ready) {
     exit 1
 }
 Say '  [3/4] The application answers on http://localhost:5173' 'Green'
+
+if ($NoTunnel) {
+    Say ''
+    Say '  Checked, and nothing published: -NoTunnel was given.' 'Cyan'
+    Say "  The stack is running on $local"
+    Say ''
+    Say '  Run it again without -NoTunnel to get a public link.' 'Yellow'
+    Say ''
+    exit 0
+}
 
 # ---------------------------------------------------------------- the tunnel
 # --logfile rather than reading the console: PowerShell 5.1 wraps a native
@@ -136,7 +158,7 @@ import qrcode, sys
 qrcode.make(sys.argv[1]).resize((600, 600)).save(sys.argv[2])
 "@
     $qrScript | Out-File -FilePath "$env:TEMP\cs_qr.py" -Encoding utf8
-    python "$env:TEMP\cs_qr.py" $url $qrFile 2>&1 | Out-Null
+    cmd /c "python ""$env:TEMP\cs_qr.py"" ""$url"" ""$qrFile"" >nul 2>&1"
 } catch {
     Say '  (no QR code - python or the qrcode package is missing, link still works)' 'DarkGray'
 }
@@ -163,6 +185,12 @@ Say '  Enrolled students      TE23CS001  TE23CS015  TE23CS022' 'DarkGray'
 Say '                         (password not printed here - see your own notes)' 'DarkGray'
 Say ''
 Say '  Leave this window open. Press Ctrl-C to take the link down.' 'Yellow'
+Say ''
+# The tunnel runs as a hidden child process, so closing this window with the X
+# instead of pressing Ctrl-C would orphan it: the window disappears, the link
+# stays up, and nobody is watching it. Worth knowing how to kill it by hand.
+Say "  If you close this window by accident, the link stays up. Stop it with:" 'DarkGray'
+Say "      Stop-Process -Id $($tunnel.Id)" 'DarkGray'
 Say ''
 
 try {
