@@ -62,3 +62,8 @@ desktop.ini
 
 # Editor and tool configuration, not part of the project
 .claude/
+
+# The live link and its QR are per-run and ephemeral. Publishing the URL of a
+# tunnel that is currently up defeats the point of it being unguessable.
+demo/LIVE-LINK.txt
+demo/LIVE-LINK-qr.png
