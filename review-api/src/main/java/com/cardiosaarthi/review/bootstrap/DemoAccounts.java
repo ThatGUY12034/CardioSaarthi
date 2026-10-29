@@ -75,11 +75,12 @@ public class DemoAccounts implements ApplicationRunner {
                 .update();
 
         db.sql("""
-                INSERT INTO students (email, full_name, college_id, cohort, password_hash)
-                VALUES ('demo.student@terna.edu', 'Demo Student', 'TE/4321', 'demo', :hash)
+                INSERT INTO students (email, full_name, college_id, cohort, password_hash, is_demo)
+                VALUES ('demo.student@terna.edu', 'Demo Student', 'TE/4321', 'demo', :hash, true)
                 ON CONFLICT (lower(email)) DO UPDATE SET
                     college_id = excluded.college_id,
                     password_hash = excluded.password_hash,
+                    is_demo = true,
                     active = true
                 """)
                 .param("hash", hash)
